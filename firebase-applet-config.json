@@ -1,0 +1,9 @@
+{
+  "apiKey": "AIzaSyAWy5-XK9_1bgrdU7pPIGxbt2TnKHYJKUg",
+  "authDomain": "chess-d6bcf.firebaseapp.com",
+  "databaseURL": "https://chess-d6bcf-default-rtdb.firebaseio.com",
+  "projectId": "chess-d6bcf",
+  "storageBucket": "chess-d6bcf.firebasestorage.app",
+  "messagingSenderId": "720408733866",
+  "appId": "1:720408733866:web:375d6d32e979230116c8d3"
+}

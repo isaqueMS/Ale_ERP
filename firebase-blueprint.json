@@ -1,0 +1,121 @@
+{
+  "entities": {
+    "staff": {
+      "title": "Staff",
+      "description": "Beauty salon attendants",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "specialty": { "type": "string", "description": "Specialty (hair, nails, etc.)" },
+        "commission": { "type": "number", "description": "Commission percentage" },
+        "status": { "type": "string", "enum": ["active", "inactive"], "description": "Current status" },
+        "photoUrl": { "type": "string", "description": "Profile picture URL" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "phone", "specialty", "commission", "status"]
+    },
+    "client": {
+      "title": "Client",
+      "description": "Salon clients",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "birthDate": { "type": "string", "format": "date", "description": "Date of birth" },
+        "notes": { "type": "string", "description": "Allergies, preferences, etc." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "phone"]
+    },
+    "product": {
+      "title": "Product",
+      "description": "Inventory products",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Product name" },
+        "description": { "type": "string", "description": "Product description" },
+        "category": { "type": "string", "description": "Category" },
+        "sku": { "type": "string", "description": "SKU code" },
+        "stock": { "type": "number", "description": "Quantity in stock" },
+        "costPrice": { "type": "number", "description": "Cost price" },
+        "salePrice": { "type": "number", "description": "Sale price" },
+        "supplier": { "type": "string", "description": "Supplier name" },
+        "expiryDate": { "type": "string", "format": "date", "description": "Expiration date" },
+        "images": { "type": "array", "items": { "type": "string" }, "description": "List of image URLs" },
+        "mainImage": { "type": "string", "description": "Main image URL" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "category", "stock", "costPrice", "salePrice"]
+    },
+    "appointment": {
+      "title": "Appointment",
+      "description": "Service appointments",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string", "description": "Reference to client" },
+        "staffId": { "type": "string", "description": "Reference to staff" },
+        "service": { "type": "string", "description": "Service name" },
+        "date": { "type": "string", "format": "date-time", "description": "Appointment date and time" },
+        "status": { "type": "string", "enum": ["scheduled", "completed", "cancelled"], "description": "Current status" },
+        "notes": { "type": "string", "description": "Additional notes" },
+        "price": { "type": "number", "description": "Service price" },
+        "commissionAmount": { "type": "number", "description": "Calculated commission" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "staffId", "service", "date", "status", "price"]
+    },
+    "transaction": {
+      "title": "Transaction",
+      "description": "Financial records",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["income", "expense"], "description": "Transaction type" },
+        "category": { "type": "string", "description": "Category (service, product, rent, etc.)" },
+        "amount": { "type": "number", "description": "Transaction amount" },
+        "date": { "type": "string", "format": "date-time", "description": "Transaction date" },
+        "description": { "type": "string", "description": "Description" },
+        "appointmentId": { "type": "string", "description": "Reference to appointment if income" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "category", "amount", "date"]
+    },
+    "user": {
+      "title": "User",
+      "description": "System users and roles",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "role"]
+    },
+    "service": {
+      "title": "Service",
+      "description": "Salon services and prices",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Service name" },
+        "description": { "type": "string", "description": "Service description" },
+        "price": { "type": "number", "description": "Service price" },
+        "duration": { "type": "number", "description": "Estimated duration in minutes" },
+        "category": { "type": "string", "description": "Category (hair, nails, etc.)" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "price"]
+    }
+  },
+  "firestore": {
+    "/staff": { "schema": "staff", "description": "Salon attendants" },
+    "/clients": { "schema": "client", "description": "Salon clients" },
+    "/products": { "schema": "product", "description": "Inventory products" },
+    "/appointments": { "schema": "appointment", "description": "Service appointments" },
+    "/transactions": { "schema": "transaction", "description": "Financial records" },
+    "/users": { "schema": "user", "description": "System users and roles" },
+    "/services": { "schema": "service", "description": "Salon services and prices" }
+  }
+}

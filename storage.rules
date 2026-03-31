@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /products/{allPaths=**} {
+      // Aberto para qualquer usuário autenticado ler/escrever durante o ajuste do sistema
+      // No futuro, podemos restringir apenas ao seu e-mail de admin
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // Regra padrão para outros caminhos
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

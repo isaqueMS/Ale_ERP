@@ -1,0 +1,5 @@
+{
+  "name": "Estúdio da Alê ERP",
+  "description": "Sistema completo de gestão para o salão Estúdio da Alê, incluindo agendamentos, clientes, produtos e financeiro.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
