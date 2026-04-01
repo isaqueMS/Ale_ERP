@@ -3,7 +3,7 @@ export interface Staff {
   name: string;
   phone: string;
   email?: string;
-  specialty: string;
+  specialties: string[];
   commission: number;
   status: 'active' | 'inactive';
   photoUrl?: string;

@@ -27,19 +27,23 @@ export default function Sidebar({ onClose, className }: SidebarProps) {
   const { isAdmin, isAgente, user } = useAuth();
 
   // Itens visíveis para todos os usuários autenticados
+  // Itens visíveis para todos
   const publicItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-    { icon: Calendar, label: 'Agenda', path: '/agenda' },
+    { icon: LayoutDashboard, label: 'Início', path: '/' },
+    { icon: Calendar, label: isAdmin ? 'Agenda' : 'Serviços', path: '/agenda' },
     { icon: UserCircle, label: 'Clientes', path: '/clientes' },
     { icon: Package, label: 'Produtos', path: '/produtos' },
-    { icon: Banknote, label: 'Caixa', path: '/caixa' },
   ];
+
+  if (isAdmin) {
+    publicItems.push({ icon: Banknote, label: 'Caixa', path: '/caixa' });
+  }
 
   // Itens exclusivos do administrador
   const adminItems = [
     { icon: Users, label: 'Equipe', path: '/equipe' },
     { icon: DollarSign, label: 'Financeiro Geral', path: '/financeiro' },
-    { icon: Settings, label: 'Serviços', path: '/servicos' },
+    { icon: Settings, label: 'Serviços do Studio', path: '/servicos' },
   ];
 
   const menuItems = isAdmin

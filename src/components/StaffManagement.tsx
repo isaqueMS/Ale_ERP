@@ -19,11 +19,13 @@ export default function StaffManagement() {
   const [editingStaff, setEditingStaff] = React.useState<Staff | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [isMobile, setIsMobile] = React.useState(window.innerWidth < 768);
+  const SPECIALTIES = ['Cabelo', 'Unhas', 'Barba', 'Estética'];
+
   const [formData, setFormData] = React.useState({
     name: '',
     phone: '',
     email: '',
-    specialty: '',
+    specialties: [] as string[],
     commission: 0,
     status: 'active' as const,
     photoUrl: '',
@@ -53,10 +55,23 @@ export default function StaffManagement() {
     return () => unsubscribe();
   }, []);
 
+  const toggleSpecialty = (s: string) => {
+    setFormData(prev => ({
+      ...prev,
+      specialties: prev.specialties.includes(s)
+        ? prev.specialties.filter(item => item !== s)
+        : [...prev.specialties, s]
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin) {
       alert("Acesso restrito para administradores.");
+      return;
+    }
+    if (formData.specialties.length === 0) {
+      alert("Selecione pelo menos uma especialidade.");
       return;
     }
     setLoading(true);
@@ -68,7 +83,7 @@ export default function StaffManagement() {
           name: formData.name,
           phone: formData.phone,
           email: formData.email,
-          specialty: formData.specialty,
+          specialties: formData.specialties,
           commission: formData.commission,
           status: formData.status,
           photoUrl: formData.photoUrl
@@ -115,7 +130,7 @@ export default function StaffManagement() {
 
       setIsModalOpen(false);
       setEditingStaff(null);
-      setFormData({ name: '', phone: '', email: '', specialty: '', commission: 0, status: 'active', photoUrl: '', password: '', role: 'agente' });
+      setFormData({ name: '', phone: '', email: '', specialties: [], commission: 0, status: 'active', photoUrl: '', password: '', role: 'agente' });
       setShowSuccess(true);
     } catch (error: any) {
       alert(`Erro: ${error.message}`);
@@ -131,7 +146,7 @@ export default function StaffManagement() {
       name: member.name,
       phone: member.phone,
       email: member.email || '',
-      specialty: member.specialty,
+      specialties: member.specialties || (member as any).specialty ? [(member as any).specialty] : [],
       commission: member.commission,
       status: member.status,
       photoUrl: member.photoUrl || '',
@@ -149,7 +164,7 @@ export default function StaffManagement() {
 
   const filteredStaff = staff.filter(member => 
     (member.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (member.specialty || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (member.specialties || []).some(s => s.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   if (isMobile) {
@@ -195,9 +210,13 @@ export default function StaffManagement() {
                  <div className="flex justify-between items-end">
                     <div>
                        <h4 className="font-black text-lg text-text uppercase tracking-tighter leading-tight">{member.name}</h4>
-                       <div className="flex items-center gap-2 text-[10px] font-black text-muted uppercase tracking-widest mt-1">
-                         <Award className="w-3 h-3 text-accent" />
-                         <span>{member.specialty}</span>
+                       <div className="flex flex-wrap gap-1 mt-1">
+                         {(member.specialties || []).map(s => (
+                           <div key={s} className="flex items-center gap-1 text-[8px] font-black text-muted uppercase tracking-widest bg-secondary/10 px-2 py-0.5 rounded-full">
+                             <Award className="w-2 h-2 text-accent" />
+                             <span>{s}</span>
+                           </div>
+                         ))}
                        </div>
                     </div>
                     <div className="text-right">
@@ -283,9 +302,13 @@ export default function StaffManagement() {
             <div className="pt-14 p-8 space-y-6">
               <div>
                 <h4 className="text-2xl font-black text-text uppercase tracking-tighter leading-tight">{member.name}</h4>
-                <div className="flex items-center gap-2 text-primary text-[10px] font-black uppercase tracking-widest mt-2 bg-primary/5 px-3 py-1 rounded-full w-fit">
-                  <Award className="w-4 h-4 text-accent" />
-                  <span>{member.specialty}</span>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {(member.specialties || []).map(s => (
+                    <div key={s} className="flex items-center gap-2 text-primary text-[9px] font-black uppercase tracking-widest bg-primary/5 px-3 py-1 rounded-full w-fit">
+                      <Award className="w-3 h-3 text-accent" />
+                      <span>{s}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -325,7 +348,28 @@ export default function StaffManagement() {
                   <div className="col-span-2"> <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Nome Completo</label> <input required className="input-field py-3 font-bold" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} /> </div>
                   <div> <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Telefone</label> <input required className="input-field py-3 font-bold" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} /> </div>
                   <div> <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">E-mail</label> <input className="input-field py-3 font-bold" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} /> </div>
-                  <div> <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Especialidade</label> <input required className="input-field py-3 font-bold" value={formData.specialty} onChange={(e) => setFormData({ ...formData, specialty: e.target.value })} /> </div>
+                  
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-2 ml-1">Especialidades</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {SPECIALTIES.map(s => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => toggleSpecialty(s)}
+                          className={cn(
+                            "py-3 px-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-center border",
+                            formData.specialties.includes(s)
+                              ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
+                              : "bg-white text-muted border-secondary hover:border-primary/30"
+                          )}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div> <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Comissão (%)</label> <input required type="number" className="input-field py-3 font-bold" value={formData.commission} onChange={(e) => setFormData({ ...formData, commission: Number(e.target.value) })} /> </div>
                   {!editingStaff && ( <div className="col-span-2"> <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Senha de Acesso Profissional</label> <input required type="password" placeholder="Mínimo 6 dígitos" className="input-field py-3 font-bold" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} /> </div> )}
                   <div className="col-span-2">
@@ -334,7 +378,7 @@ export default function StaffManagement() {
                       <button type="button" onClick={() => setFormData({...formData, role: 'agente'})} className={cn("flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all", formData.role === 'agente' ? "bg-white text-blue-600 shadow-sm" : "text-muted")}>Agente</button>
                       <button type="button" onClick={() => setFormData({...formData, role: 'admin'})} className={cn("flex-1 py-3 rounded-xl text-[10px] font-black uppercase transition-all", formData.role === 'admin' ? "bg-white text-green-600 shadow-sm" : "text-muted")}>Admin</button>
                     </div>
-                    <p className="text-[9px] text-muted mt-1 italic">Agende, venda produtos e cadastre clientes. Preços definidos pelo admin.</p>
+                    <p className="text-[9px] text-muted mt-1 italic">Agente: gerencia sua própria agenda e portfólio. Admin: controle total.</p>
                   </div>
                   <div className="col-span-2">
                     <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Status na Plataforma</label>

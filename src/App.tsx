@@ -58,7 +58,10 @@ export default function App() {
               path="equipe" 
               element={isAdmin ? <StaffManagement /> : <Navigate to="/" replace />} 
             />
-            <Route path="caixa" element={<CashRegister />} />
+            <Route 
+              path="caixa" 
+              element={isAdmin ? <CashRegister /> : <Navigate to="/" replace />} 
+            />
             <Route 
               path="financeiro" 
               element={isAdmin ? <FinancialManagement /> : <Navigate to="/" replace />} 

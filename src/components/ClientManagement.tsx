@@ -1,6 +1,6 @@
 import React from 'react';
-import { Plus, Search, Edit2, Trash2, Phone, Mail, Calendar, MessageCircle, Info, XCircle, User } from 'lucide-react';
-import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { Plus, Search, Edit2, Trash2, Phone, Mail, Calendar, MessageCircle, Info, XCircle, User, History, ShoppingBag, Scissors, Clock } from 'lucide-react';
+import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Client } from '../types';
 import { cn, formatPhone, getWhatsAppLink } from '../lib/utils';
@@ -20,6 +20,9 @@ export default function ClientManagement() {
     birthDate: '',
     notes: ''
   });
+  const [viewingHistory, setViewingHistory] = React.useState<Client | null>(null);
+  const [historyData, setHistoryData] = React.useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = React.useState(false);
 
   React.useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -73,6 +76,44 @@ export default function ClientManagement() {
     }
   };
 
+  const handleHistory = async (client: Client) => {
+    setViewingHistory(client);
+    setLoadingHistory(true);
+    setHistoryData([]);
+    
+    try {
+      // Buscar agendamentos do cliente
+      const appsQ = query(collection(db, 'appointments'), where('clientId', '==', client.id));
+      const appsSnap = await getDocs(appsQ);
+      const apps = appsSnap.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data(), 
+        type: 'service' 
+      } as any));
+
+      // Buscar transações do cliente (produtos ou outros via email/celular se não houver ID direto)
+      const txsQ = query(collection(db, 'transactions'), where('clientId', '==', client.id));
+      const txsSnap = await getDocs(txsQ);
+      const txs = txsSnap.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data(), 
+        type: 'product' 
+      } as any));
+
+      const combined = [...apps, ...txs].sort((a, b) => {
+        const dateA = a.date || a.createdAt || '';
+        const dateB = b.date || b.createdAt || '';
+        return dateB.localeCompare(dateA);
+      });
+
+      setHistoryData(combined);
+    } catch (error) {
+       console.error("Erro ao carregar histórico:", error);
+    } finally {
+       setLoadingHistory(false);
+    }
+  };
+
   const filteredClients = clients.filter(client => 
     client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.phone.includes(searchTerm)
@@ -109,8 +150,8 @@ export default function ClientManagement() {
                   <div className="w-14 h-14 rounded-3xl bg-primary/10 flex items-center justify-center text-primary font-black text-xl shadow-inner border border-primary/5 shrink-0">
                     {client.name?.[0] || '?'}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-black text-lg text-text truncate leading-tight uppercase tracking-tighter">{client.name}</h4>
+                  <div className="flex-1 min-w-0" onClick={() => handleHistory(client)}>
+                    <h4 className="font-black text-lg text-text truncate leading-tight uppercase tracking-tighter hover:text-primary cursor-pointer transition-colors">{client.name}</h4>
                     <div className="flex flex-col gap-1 mt-1">
                       <div className="flex items-center gap-2 text-[10px] font-black text-muted lowercase">
                         <Phone className="w-3 h-3 text-accent" />
@@ -217,8 +258,8 @@ export default function ClientManagement() {
                     <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-black text-lg border border-primary/5">
                       {client.name?.[0] || '?'}
                     </div>
-                    <div>
-                      <p className="font-black text-text truncate max-w-[150px] uppercase tracking-tighter">{client.name}</p>
+                    <div onClick={() => handleHistory(client)} className="cursor-pointer group/name">
+                      <p className="font-black text-text truncate max-w-[150px] uppercase tracking-tighter group-hover/name:text-primary transition-colors">{client.name}</p>
                       <p className="text-[10px] font-black text-muted uppercase italic tracking-widest opacity-60">Desde {client.createdAt ? format(new Date(client.createdAt), "MMM yyyy", { locale: ptBR }) : 'Antigo'}</p>
                     </div>
                   </div>
@@ -271,9 +312,85 @@ export default function ClientManagement() {
           </tbody>
         </table>
       </div>
-      {renderModal()}
+      {renderHistoryModal()}
     </div>
   );
+
+  function renderHistoryModal() {
+    return (
+      <>
+        {viewingHistory && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[60] flex items-center justify-end">
+            <div className="bg-[#FDFDFD] h-full w-full max-w-md p-8 shadow-2xl animate-in slide-in-from-right duration-300 relative overflow-y-auto">
+               <button onClick={() => setViewingHistory(null)} className="absolute top-6 right-6 p-2 hover:bg-secondary/20 rounded-full transition-colors">
+                  <XCircle className="w-6 h-6 text-muted" />
+               </button>
+
+               <div className="mb-10">
+                  <span className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-2 block">Histórico do Cliente</span>
+                  <h3 className="text-3xl font-black text-text uppercase tracking-tighter leading-none mb-4">{viewingHistory.name}</h3>
+                  <div className="flex flex-wrap gap-2">
+                     <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-widest">Desde {viewingHistory.createdAt ? format(new Date(viewingHistory.createdAt), 'yyyy') : '---'}</span>
+                     <span className="px-3 py-1 bg-accent/10 text-accent text-[10px] font-black rounded-full uppercase tracking-widest">{viewingHistory.phone}</span>
+                  </div>
+               </div>
+
+               <div className="space-y-6">
+                  {loadingHistory ? (
+                     <div className="py-20 text-center space-y-4">
+                        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+                        <p className="text-[10px] font-black text-muted uppercase tracking-widest">Carregando registro...</p>
+                     </div>
+                  ) : historyData.length === 0 ? (
+                     <div className="py-20 text-center border-2 border-dashed border-secondary/20 rounded-[2rem] bg-secondary/5">
+                        <p className="text-[10px] font-black text-muted uppercase tracking-widest">Nenhum registro encontrado.</p>
+                     </div>
+                  ) : (
+                     historyData.map((item, idx) => (
+                        <div key={idx} className="relative pl-6 pb-6 border-l-2 border-secondary/20 last:pb-0">
+                           <div className="absolute top-0 -left-[9px] w-4 h-4 rounded-full bg-white border-2 border-primary flex items-center justify-center">
+                              {item.type === 'service' ? <Scissors className="w-2 h-2 text-primary" /> : <ShoppingBag className="w-2 h-2 text-accent" />}
+                           </div>
+                           
+                           <div className="bg-white p-5 rounded-[1.5rem] border border-secondary/20 shadow-sm transition-all hover:shadow-md">
+                              <div className="flex justify-between items-start mb-2">
+                                 <div>
+                                    <span className={cn(
+                                       "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md mb-1 inline-block",
+                                       item.type === 'service' ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
+                                    )}>
+                                       {item.type === 'service' ? 'Procedimento' : 'Compra (Produto)'}
+                                    </span>
+                                    <h5 className="font-black text-text uppercase tracking-tighter leading-tight">{item.serviceName || item.description || item.productName || 'Venda'}</h5>
+                                 </div>
+                                 <p className="text-sm font-black text-primary tracking-tighter">
+                                    {item.price ? `R$ ${item.price}` : item.amount ? `R$ ${item.amount}` : '—'}
+                                 </p>
+                              </div>
+
+                              <div className="flex items-center justify-between text-[9px] font-bold text-muted uppercase tracking-widest mt-4 pt-4 border-t border-secondary/5">
+                                 <div className="flex items-center gap-1.5">
+                                    <Clock className="w-3 h-3 opacity-40" />
+                                    <span>{format(new Date(item.date || item.createdAt), 'dd MMMM, yyyy', { locale: ptBR })}</span>
+                                 </div>
+                                 {item.staffName && (
+                                    <div className="flex items-center gap-1.5">
+                                       <User className="w-3 h-3 opacity-40" />
+                                       <span>Prof: {item.staffName}</span>
+                                    </div>
+                                 )}
+                              </div>
+                           </div>
+                        </div>
+                     ))
+                  )}
+               </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
 
   function renderModal() {
     return (

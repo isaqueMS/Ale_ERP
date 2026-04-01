@@ -27,12 +27,12 @@ export default function Layout() {
 
   const navItems = [
     { icon: LayoutDashboard, label: 'Início', path: '/' },
-    { icon: Calendar, label: 'Agenda', path: '/agenda' },
+    { icon: Calendar, label: isAdmin ? 'Agenda' : 'Serviços', path: '/agenda' },
     { icon: UserCircle, label: 'Clientes', path: '/clientes' },
-    { icon: Banknote, label: 'Caixa', path: '/caixa' },
   ];
 
   if (isAdmin) {
+    navItems.push({ icon: Banknote, label: 'Caixa', path: '/caixa' });
     navItems.push({ icon: Users, label: 'Equipe', path: '/equipe' });
   }
 

@@ -34,6 +34,8 @@ export default function FinancialManagement() {
   const [noteValue, setNoteValue] = React.useState('');
   const [startDate, setStartDate] = React.useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = React.useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [commStartDate, setCommStartDate] = React.useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [commEndDate, setCommEndDate] = React.useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [isMobile, setIsMobile] = React.useState(window.innerWidth < 768);
 
   const COLORS = ['#FFB7C5', '#F5E6D3', '#D4AF37', '#E6E6FA', '#F0FFF0', '#FFF0F5'];
@@ -47,26 +49,14 @@ export default function FinancialManagement() {
   }, []);
 
   React.useEffect(() => {
-    const start = `${startDate}T00:00:00.000Z`;
-    const end = `${endDate}T23:59:59.999Z`;
-
-    const q = query(
-      collection(db, 'transactions'), 
-      where('date', '>=', start),
-      where('date', '<=', end),
-      orderBy('date', 'desc')
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // Buscar TODAS as transações e filtrar no frontend para evitar problemas de índice
+    const unsubscribe = onSnapshot(collection(db, 'transactions'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
       setTransactions(data);
     });
 
-    const qAppointments = query(
-      collection(db, 'appointments'),
-      where('date', '>=', start),
-      where('date', '<=', end)
-    );
-    const unsubscribeAppointments = onSnapshot(qAppointments, (snapshot) => {
+    // Buscar TODOS os appointments para calcular comissões
+    const unsubscribeAppointments = onSnapshot(collection(db, 'appointments'), (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment));
       setAppointments(data);
     });
@@ -81,13 +71,17 @@ export default function FinancialManagement() {
       unsubscribeAppointments();
       unsubscribeStaff();
     };
-  }, [startDate, endDate]);
+  }, []);
 
   const totals = React.useMemo(() => {
-    const income = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-    const expense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    const start = `${startDate}T00:00:00.000Z`;
+    const end = `${endDate}T23:59:59.999Z`;
+
+    const filtered = transactions.filter(t => t.date >= start && t.date <= end);
+    const income = filtered.filter(t => t.type === 'income').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+    const expense = filtered.filter(t => t.type === 'expense').reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
     return { income, expense, balance: income - expense };
-  }, [transactions]);
+  }, [transactions, startDate, endDate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,27 +105,100 @@ export default function FinancialManagement() {
     } catch (error) { console.error(error); }
   };
 
-  const filteredTransactions = transactions.filter(t => {
-    const matchesSearch = t.category.toLowerCase().includes(searchTerm.toLowerCase()) || (t.description?.toLowerCase() || '').includes(searchTerm.toLowerCase());
-    const matchesType = filterType === 'all' || t.type === filterType;
-    let matchesStaff = true;
-    if (selectedStaff !== 'all') {
-      matchesStaff = t.createdBy === selectedStaff || (t.creatorName || '').toLowerCase().includes(selectedStaff.toLowerCase());
-    }
-    return matchesSearch && matchesType && matchesStaff;
-  });
+  const filteredTransactions = React.useMemo(() => {
+    const start = `${startDate}T00:00:00.000Z`;
+    const end = `${endDate}T23:59:59.999Z`;
+
+    const filtered = transactions.filter(t => {
+      // Comparação de data robusta (ajusta se a data for apenas YYYY-MM-DD ou ISO)
+      const tDate = t.date?.includes('T') ? t.date : `${t.date}T00:00:00.000Z`;
+      const inDateRange = tDate >= start && tDate <= end;
+
+      const matchesSearch = t.category.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (t.description?.toLowerCase() || '').includes(searchTerm.toLowerCase());
+      
+      const matchesType = filterType === 'all' || t.type === filterType;
+      
+      let matchesStaff = true;
+      if (selectedStaff !== 'all') {
+        const tx = t as any;
+        matchesStaff = 
+          tx.staffId === selectedStaff || 
+          tx.createdBy === selectedStaff || 
+          (tx.creatorName || '').toLowerCase().includes(selectedStaff.toLowerCase()) ||
+          (tx.staffName || '').toLowerCase().includes(selectedStaff.toLowerCase());
+      }
+      
+      return inDateRange && matchesSearch && matchesType && matchesStaff;
+    });
+
+    console.log('[FINANCEIRO] Total:', transactions.length, '| Filtrados:', filtered.length, '| Periodo:', startDate, 'a', endDate, '| Staff:', selectedStaff);
+    return filtered;
+  }, [transactions, startDate, endDate, searchTerm, filterType, selectedStaff]);
 
   const staffCommissions = React.useMemo(() => {
-    const commissions: { [key: string]: { name: string; total: number; count: number } } = {};
-    staff.forEach(s => { commissions[s.id] = { name: s.name, total: 0, count: 0 }; });
-    appointments.filter(a => a.status === 'completed').forEach(a => {
-      if (commissions[a.staffId]) {
-        commissions[a.staffId].total += a.commissionAmount || 0;
-        commissions[a.staffId].count += 1;
-      }
-    });
+    const commissions: { [key: string]: { name: string; total: number; revenue: number; count: number; percent: number } } = {};
+    staff.forEach(s => { commissions[s.id] = { name: s.name, total: 0, revenue: 0, count: 0, percent: s.commission || 0 }; });
+    
+    const start = `${commStartDate}T00:00:00.000Z`;
+    const end = `${commEndDate}T23:59:59.999Z`;
+
+    // Calcular comissões por APPOINTMENTS completados
+    appointments
+      .filter(a => a.status === 'completed' && a.date >= start && a.date <= end)
+      .forEach(a => {
+        if (commissions[a.staffId]) {
+          const staffMember = staff.find(s => s.id === a.staffId);
+          const commissionPercent = staffMember?.commission || 0;
+          const price = Number(a.price) || 0;
+          const calcCommission = price * (commissionPercent / 100);
+          const commissionAmt = a.commissionAmount && a.commissionAmount > 0 
+            ? a.commissionAmount 
+            : calcCommission;
+          
+          commissions[a.staffId].revenue += price;
+          commissions[a.staffId].total += commissionAmt;
+          commissions[a.staffId].count += 1;
+        }
+      });
+
+    // Se não encontrou nada via appointments, tentar via transactions
+    const hasAnyFromApts = Object.values(commissions).some(c => c.count > 0);
+    if (!hasAnyFromApts) {
+      transactions
+        .filter(t => t.type === 'income' && t.date >= start && t.date <= end)
+        .forEach(t => {
+          const tx = t as any;
+          let matchedStaffId: string | null = null;
+          
+          if (tx.staffId && commissions[tx.staffId]) {
+            matchedStaffId = tx.staffId;
+          } else if (tx.appointmentId) {
+            const apt = appointments.find(a => a.id === tx.appointmentId);
+            if (apt && commissions[apt.staffId]) {
+              matchedStaffId = apt.staffId;
+            }
+          }
+          
+          if (!matchedStaffId) {
+            const staffByUid = staff.find(s => (s as any).uid === tx.createdBy);
+            if (staffByUid) matchedStaffId = staffByUid.id;
+          }
+          
+          if (matchedStaffId && commissions[matchedStaffId]) {
+            const price = Number(t.amount) || 0;
+            const commissionPercent = commissions[matchedStaffId].percent;
+            const commissionAmt = price * (commissionPercent / 100);
+            
+            commissions[matchedStaffId].revenue += price;
+            commissions[matchedStaffId].total += commissionAmt;
+            commissions[matchedStaffId].count += 1;
+          }
+        });
+    }
+
     return Object.entries(commissions).map(([id, data]) => ({ id, ...data }));
-  }, [staff, appointments]);
+  }, [staff, appointments, transactions, commStartDate, commEndDate]);
 
   if (!isAdmin) return <div className="p-20 text-center font-black uppercase text-muted tracking-widest">Acesso Restrito Admin</div>;
 
@@ -154,22 +221,46 @@ export default function FinancialManagement() {
          <FinancialCard title="Saldo Final" value={totals.balance} icon={DollarSign} color="bg-accent" />
       </div>
 
-      {/* Date Filters Mobile */}
-      <div className="mobile-card p-4 bg-white border border-secondary shadow-premium flex flex-col gap-3">
-         <div className="flex items-center gap-2 border-b border-secondary/10 pb-3">
-            <Clock className="w-4 h-4 text-primary" />
-            <span className="text-[10px] font-black uppercase tracking-widest">Filtrar Período</span>
+      {/* Filter Area - PREMIUM ERP STYLE */}
+      <div className="glass-card p-6 bg-white border border-secondary shadow-premium space-y-6">
+         <div className="flex items-center gap-3 border-b border-secondary/10 pb-4">
+            <Filter className="w-5 h-5 text-primary" />
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted">Filtros de Busca Avançada</h3>
          </div>
-         <div className="grid grid-cols-2 gap-3 items-center">
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-secondary/5 border-none rounded-xl p-3 text-[10px] font-black uppercase" />
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-secondary/5 border-none rounded-xl p-3 text-[10px] font-black uppercase" />
-         </div>
-         <div className="flex items-center gap-3 bg-primary/5 p-3 rounded-xl border border-primary/10">
-            <Filter className="w-4 h-4 text-primary" />
-            <select value={selectedStaff} onChange={(e) => setSelectedStaff(e.target.value)} className="bg-transparent border-none text-[10px] font-black uppercase flex-1 focus:ring-0">
-               <option value="all">TODOS ATENDENTES</option>
-               {staff.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
-            </select>
+         
+         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            {/* Search Bar */}
+            <div className="lg:col-span-2 relative group">
+               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted group-focus-within:text-primary transition-colors" />
+               <input 
+                  type="text" 
+                  placeholder="Buscar por descrição ou categoria..." 
+                  className="w-full bg-secondary/5 border-2 border-transparent focus:border-primary/20 rounded-2xl pl-12 pr-4 py-4 text-xs font-black text-text placeholder:text-muted/50 transition-all focus:ring-0"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+               />
+            </div>
+
+            {/* Date Range */}
+            <div className="grid grid-cols-2 gap-2">
+               <div className="relative">
+                  <span className="absolute -top-2 left-3 bg-white px-2 text-[7px] font-black text-muted uppercase tracking-widest z-10">Início</span>
+                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-secondary/5 border-none rounded-2xl p-4 text-[10px] font-black uppercase focus:ring-1 focus:ring-primary/20" />
+               </div>
+               <div className="relative">
+                  <span className="absolute -top-2 left-3 bg-white px-2 text-[7px] font-black text-muted uppercase tracking-widest z-10">Fim</span>
+                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-secondary/5 border-none rounded-2xl p-4 text-[10px] font-black uppercase focus:ring-1 focus:ring-primary/20" />
+               </div>
+            </div>
+
+            {/* Staff Filter */}
+            <div className="relative group">
+               <span className="absolute -top-2 left-3 bg-white px-2 text-[7px] font-black text-muted uppercase tracking-widest z-10">Atendente</span>
+               <select value={selectedStaff} onChange={(e) => setSelectedStaff(e.target.value)} className="w-full bg-secondary/5 border-none rounded-2xl p-4 text-[10px] font-black uppercase focus:ring-1 focus:ring-primary/20 appearance-none">
+                  <option value="all">TODOS ATENDENTES</option>
+                  {staff.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
+               </select>
+            </div>
          </div>
       </div>
 
@@ -218,19 +309,56 @@ export default function FinancialManagement() {
 
       {/* Commission Cards */}
       <div className="pt-8 border-t border-secondary/20">
-         <h3 className="text-[10px] font-black text-muted uppercase tracking-widest mb-6 px-1 flex items-center gap-2"><PieChart className="w-4 h-4 text-accent" /> Comissões por Profissional</h3>
+         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 px-1">
+            <h3 className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
+               <PieChart className="w-4 h-4 text-accent" /> Comissões por Profissional
+            </h3>
+            
+            <div className="flex items-center gap-2 bg-white border border-secondary p-2 rounded-xl shadow-sm">
+               <Clock className="w-3 h-3 text-accent" />
+               <input 
+                  type="date" 
+                  value={commStartDate} 
+                  onChange={(e) => setCommStartDate(e.target.value)} 
+                  className="text-[9px] font-black uppercase bg-transparent border-none p-0 focus:ring-0" 
+               />
+               <span className="text-[9px] font-black text-muted">até</span>
+               <input 
+                  type="date" 
+                  value={commEndDate} 
+                  onChange={(e) => setCommEndDate(e.target.value)} 
+                  className="text-[9px] font-black uppercase bg-transparent border-none p-0 focus:ring-0" 
+               />
+            </div>
+         </div>
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {staffCommissions.map(s => (
                <div key={s.id} className="mobile-card p-5 bg-white border border-secondary shadow-premium relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-12 h-12 bg-accent/5 rounded-bl-3xl flex items-center justify-center font-black text-accent/30">{s.name?.[0]}</div>
                   <h4 className="text-xs font-black text-text uppercase tracking-tighter mb-1">{s.name}</h4>
-                  <p className="text-[9px] font-bold text-muted uppercase tracking-widest">{s.count} Serviços</p>
-                  <div className="mt-4 pt-4 border-t border-secondary/10 flex justify-between items-end">
-                     <div>
-                        <p className="text-[8px] font-black text-muted uppercase tracking-widest">Total a Pagar</p>
-                        <p className="text-lg font-black text-accent leading-none">{formatCurrency(s.total)}</p>
+                  <div className="flex items-center gap-2">
+                     <p className="text-[9px] font-bold text-muted uppercase tracking-widest">{s.count} Serviços</p>
+                     <span className="text-[9px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full">{s.percent}%</span>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-secondary/10 space-y-3">
+                     <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                           <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                           <p className="text-[8px] font-black text-muted uppercase tracking-widest">Entrada Total</p>
+                        </div>
+                        <p className="text-sm font-black text-green-600">{formatCurrency(s.revenue)}</p>
                      </div>
-                     <button className="p-2 bg-accent/10 rounded-xl text-accent active:scale-90 transition-all"><ArrowUpCircle className="w-4 h-4" /></button>
+                     <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                           <div className="w-2 h-2 rounded-full bg-accent"></div>
+                           <p className="text-[8px] font-black text-muted uppercase tracking-widest">Comissão ({s.percent}%)</p>
+                        </div>
+                        <p className="text-sm font-black text-accent">{formatCurrency(s.total)}</p>
+                     </div>
+                     <div className="flex justify-between items-center pt-3 border-t border-secondary/10">
+                        <p className="text-[8px] font-black text-muted uppercase tracking-widest">Lucro Líquido</p>
+                        <p className="text-lg font-black text-text leading-none">{formatCurrency(s.revenue - s.total)}</p>
+                     </div>
                   </div>
                </div>
             ))}

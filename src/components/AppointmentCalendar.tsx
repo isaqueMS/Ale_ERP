@@ -95,19 +95,51 @@ export default function AppointmentCalendar() {
     e.preventDefault();
     try {
       const aptDate = new Date(`${formData.date}T${formData.time}`);
+      const staffMember = staff.find(s => s.id === formData.staffId);
+      const commissionPercent = staffMember?.commission || 0;
+      const commissionAmount = (formData.price * commissionPercent) / 100;
+
       const data = {
         ...formData,
+        commissionAmount,
         date: aptDate.toISOString(),
         updatedAt: new Date().toISOString()
       };
 
+      let appointmentId = editingAppointment?.id;
+
       if (editingAppointment) {
         await updateDoc(doc(db, 'appointments', editingAppointment.id), data);
       } else {
-        await addDoc(collection(db, 'appointments'), {
+        const docRef = await addDoc(collection(db, 'appointments'), {
           ...data,
           createdAt: new Date().toISOString()
         });
+        appointmentId = docRef.id;
+      }
+
+      // If status is completed, create a transaction if it doesn't exist
+      if (formData.status === 'completed') {
+        const existingTx = transactions.find(t => t.appointmentId === appointmentId);
+        if (!existingTx) {
+          const client = clients.find(c => c.id === formData.clientId);
+          const staffMemberTx = staff.find(s => s.id === formData.staffId);
+          await addDoc(collection(db, 'transactions'), {
+            type: 'income',
+            category: 'Serviço',
+            amount: formData.price,
+            date: new Date().toISOString(),
+            description: `Serviço: ${formData.service} (${client?.name || 'Cliente'})`,
+            clientId: formData.clientId,
+            clientName: client?.name || '',
+            staffId: formData.staffId,
+            staffName: staffMemberTx?.name || '',
+            appointmentId: appointmentId,
+            createdAt: new Date().toISOString(),
+            createdBy: user?.uid || 'unknown',
+            creatorName: profile?.name || user?.email?.split('@')[0] || 'Atendente'
+          });
+        }
       }
 
       setIsModalOpen(false);
@@ -156,7 +188,14 @@ export default function AppointmentCalendar() {
     if (!client || !window.confirm('Confirmar cobrança?')) return;
 
     try {
-      await updateDoc(doc(db, 'appointments', apt.id), { status: 'completed' });
+      const staffMember = staff.find(s => s.id === apt.staffId);
+      const commissionPercent = staffMember?.commission || 0;
+      const commissionAmount = (apt.price * commissionPercent) / 100;
+
+      await updateDoc(doc(db, 'appointments', apt.id), { 
+        status: 'completed',
+        commissionAmount
+      });
       await addDoc(collection(db, 'transactions'), {
         type: 'income',
         category: 'Serviço',
@@ -165,6 +204,8 @@ export default function AppointmentCalendar() {
         description: `Serviço: ${apt.service} (${client.name})`,
         clientId: apt.clientId,
         clientName: client.name,
+        staffId: apt.staffId,
+        staffName: staffMember?.name || '',
         appointmentId: apt.id,
         createdAt: new Date().toISOString(),
         createdBy: user?.uid || 'unknown',
@@ -213,11 +254,11 @@ export default function AppointmentCalendar() {
         <div className="flex justify-between items-center mb-6">
           <div className="flex flex-col">
             <h1 className="text-2xl font-black tracking-tighter text-text uppercase">Studio Ale</h1>
-            <p className="text-[10px] font-black text-muted uppercase tracking-widest leading-none">Minha Agenda</p>
+            <p className="text-[10px] font-black text-muted uppercase tracking-widest leading-none">{isAdmin ? 'Minha Agenda' : 'Meus Serviços'}</p>
           </div>
           <div className="flex items-center gap-3">
             <button className="w-10 h-10 rounded-full bg-white shadow-premium flex items-center justify-center border border-secondary/20"><Search className="w-5 h-5 text-muted" /></button>
-            <button className="w-10 h-10 rounded-full bg-accent text-white shadow-lg flex items-center justify-center"><Scissors className="w-5 h-5" /></button>
+            <div className="w-10 h-10 rounded-full bg-accent text-white shadow-lg flex items-center justify-center"><Scissors className="w-5 h-5" /></div>
           </div>
         </div>
 
@@ -262,7 +303,14 @@ export default function AppointmentCalendar() {
                         </div>
                         <div className="flex justify-between items-center mt-4">
                           <span className="text-sm font-black text-accent">{formatCurrency(apt.price)}</span>
-                          <div className={cn("px-3 py-1 rounded-full text-[9px] font-black uppercase border", apt.status === 'scheduled' ? "border-primary/20 text-primary bg-primary/5" : "border-green-200 text-green-600 bg-green-50")}>{apt.status === 'scheduled' ? 'Agendado' : 'Concluído'}</div>
+                          <div className={cn(
+                            "px-3 py-1 rounded-full text-[9px] font-black uppercase border",
+                            apt.status === 'scheduled' ? "border-primary/20 text-primary bg-primary/5" : 
+                            apt.status === 'completed' ? "border-green-200 text-green-600 bg-green-50" :
+                            "border-red-200 text-red-600 bg-red-50"
+                          )}>
+                            {apt.status === 'scheduled' ? 'Agendado' : apt.status === 'completed' ? 'Concluído' : 'Cancelado'}
+                          </div>
                         </div>
                       </div>
                     </button>
@@ -273,9 +321,11 @@ export default function AppointmentCalendar() {
           )}
         </div>
         <div className="fixed bottom-6 right-6 flex flex-col gap-3 items-end z-40">
-          <button onClick={() => setIsProductModalOpen(true)} className="w-14 h-14 rounded-full bg-accent text-white shadow-lg flex items-center justify-center hover:bg-accent/90 transition-all">
-            <ShoppingBag className="w-6 h-6" />
-          </button>
+          {isAdmin && (
+            <button onClick={() => setIsProductModalOpen(true)} className="w-14 h-14 rounded-full bg-accent text-white shadow-lg flex items-center justify-center hover:bg-accent/90 transition-all">
+              <ShoppingBag className="w-6 h-6" />
+            </button>
+          )}
           <button onClick={() => { setFormData({ ...formData, date: format(currentDate, 'yyyy-MM-dd') }); setIsModalOpen(true); }} className="fab-button"><Plus className="w-8 h-8" /></button>
         </div>
         {renderModals()}
@@ -295,7 +345,7 @@ export default function AppointmentCalendar() {
           <button onClick={() => setCurrentDate(addWeeks(currentDate, 1))} className="p-2 hover:bg-secondary/20 transition-colors"><ChevronRight className="w-5 h-5 text-muted" /></button>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => setIsProductModalOpen(true)} className="bg-accent hover:bg-accent/90 text-white px-6 py-2.5 rounded-2xl font-bold text-xs shadow-lg flex items-center gap-2 uppercase tracking-widest"><ShoppingBag className="w-5 h-5" />Vender Produto</button>
+          {isAdmin && <button onClick={() => setIsProductModalOpen(true)} className="bg-accent hover:bg-accent/90 text-white px-6 py-2.5 rounded-2xl font-bold text-xs shadow-lg flex items-center gap-2 uppercase tracking-widest"><ShoppingBag className="w-5 h-5" />Vender Produto</button>}
           <div className="flex items-center gap-2">
             {isAdmin && (
               <select value={selectedStaffFilter} onChange={(e) => setSelectedStaffFilter(e.target.value)} className="bg-secondary/10 border-none text-[10px] font-black uppercase rounded-2xl focus:ring-1 focus:ring-primary cursor-pointer py-2.5 px-4"><option value="all">TODOS ATENDENTES</option>{staff.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}</select>
@@ -330,7 +380,12 @@ export default function AppointmentCalendar() {
                     return (
                       <div key={day.toString()} className={cn("p-2 border-r border-secondary/50 last:border-r-0 min-h-[100px] relative transition-colors cursor-pointer hover:bg-primary/5", isSameDay(day, new Date()) ? "bg-primary/5" : "bg-white")} onClick={() => { setEditingAppointment(null); setFormData({ ...formData, date: format(day, 'yyyy-MM-dd'), time: `${hour.toString().padStart(2, '0')}:00` }); setIsModalOpen(true); }}>
                         {dayAppointments.map((apt) => (
-                          <button key={apt.id} onClick={(e) => { e.stopPropagation(); handleEdit(apt); }} className={cn("w-full p-2 rounded-xl text-left text-xs mb-1 shadow-sm transition-all", apt.status === 'scheduled' ? "bg-primary/10 text-primary border border-primary/20" : "bg-green-100 text-green-700 border border-green-200")}>
+                          <button key={apt.id} onClick={(e) => { e.stopPropagation(); handleEdit(apt); }} className={cn(
+                            "w-full p-2 rounded-xl text-left text-xs mb-1 shadow-sm transition-all", 
+                            apt.status === 'scheduled' ? "bg-primary/10 text-primary border border-primary/20" : 
+                            apt.status === 'completed' ? "bg-green-100 text-green-700 border border-green-200" :
+                            "bg-red-100 text-red-700 border border-red-200"
+                          )}>
                             <p className="font-bold truncate">{clients.find(c => c.id === apt.clientId)?.name || 'Cliente'}</p>
                             <p className="opacity-80 truncate text-[9px]">{apt.service}</p>
                           </button>
@@ -407,6 +462,14 @@ export default function AppointmentCalendar() {
                     <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Valor</label>
                     <input required type="number" className="input-field" value={formData.price} readOnly={isAgente} onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })} />
                     {isAgente && <p className="text-[9px] text-muted mt-1 italic">Preço definido pelo administrador</p>}
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Status</label>
+                    <select className="input-field" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}>
+                      <option value="scheduled">Agendado</option>
+                      <option value="completed">Concluído</option>
+                      <option value="cancelled">Cancelado</option>
+                    </select>
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 mt-8">
