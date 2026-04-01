@@ -1,9 +1,9 @@
 import React from 'react';
-import { Plus, Search, Edit2, Trash2, Phone, Mail, Calendar, MessageCircle, Info, XCircle, User, History, ShoppingBag, Scissors, Clock } from 'lucide-react';
+import { Plus, Search, Edit3, Trash2, Phone, Mail, Calendar, MessageCircle, Info, XCircle, User, Scissors, Clock } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, getDocs } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Client } from '../types';
-import { cn, formatPhone, getWhatsAppLink } from '../lib/utils';
+import { cn, formatPhone, getWhatsAppLink, formatCurrency } from '../lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -13,13 +13,7 @@ export default function ClientManagement() {
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingClient, setEditingClient] = React.useState<Client | null>(null);
   const [isMobile, setIsMobile] = React.useState(window.innerWidth < 768);
-  const [formData, setFormData] = React.useState({
-    name: '',
-    phone: '',
-    email: '',
-    birthDate: '',
-    notes: ''
-  });
+  const [formData, setFormData] = React.useState({ name: '', phone: '', email: '', birthDate: '', notes: '' });
   const [viewingHistory, setViewingHistory] = React.useState<Client | null>(null);
   const [historyData, setHistoryData] = React.useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = React.useState(false);
@@ -33,8 +27,7 @@ export default function ClientManagement() {
   React.useEffect(() => {
     const q = query(collection(db, 'clients'), orderBy('name'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const clientData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
-      setClients(clientData);
+      setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
     });
     return () => unsubscribe();
   }, []);
@@ -42,429 +35,135 @@ export default function ClientManagement() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (editingClient) {
-        await updateDoc(doc(db, 'clients', editingClient.id), formData);
-      } else {
-        await addDoc(collection(db, 'clients'), {
-          ...formData,
-          createdAt: new Date().toISOString()
-        });
-      }
+      if (editingClient) await updateDoc(doc(db, 'clients', editingClient.id), formData);
+      else await addDoc(collection(db, 'clients'), { ...formData, createdAt: new Date().toISOString() });
       setIsModalOpen(false);
       setEditingClient(null);
       setFormData({ name: '', phone: '', email: '', birthDate: '', notes: '' });
-    } catch (error) {
-      console.error('Error saving client:', error);
-    }
-  };
-
-  const handleEdit = (client: Client) => {
-    setEditingClient(client);
-    setFormData({
-      name: client.name,
-      phone: client.phone,
-      email: client.email || '',
-      birthDate: client.birthDate || '',
-      notes: client.notes || ''
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza que deseja excluir este cliente?')) {
-      await deleteDoc(doc(db, 'clients', id));
-    }
+    } catch (error) { console.error(error); }
   };
 
   const handleHistory = async (client: Client) => {
     setViewingHistory(client);
     setLoadingHistory(true);
-    setHistoryData([]);
-    
     try {
-      // Buscar agendamentos do cliente
       const appsQ = query(collection(db, 'appointments'), where('clientId', '==', client.id));
-      const appsSnap = await getDocs(appsQ);
-      const apps = appsSnap.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(), 
-        type: 'service' 
-      } as any));
-
-      // Buscar transações do cliente (produtos ou outros via email/celular se não houver ID direto)
       const txsQ = query(collection(db, 'transactions'), where('clientId', '==', client.id));
-      const txsSnap = await getDocs(txsQ);
-      const txs = txsSnap.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(), 
-        type: 'product' 
-      } as any));
-
-      const combined = [...apps, ...txs].sort((a, b) => {
-        const dateA = a.date || a.createdAt || '';
-        const dateB = b.date || b.createdAt || '';
-        return dateB.localeCompare(dateA);
-      });
-
+      const [appsSnap, txsSnap] = await Promise.all([getDocs(appsQ), getDocs(txsQ)]);
+      const combined = [
+        ...appsSnap.docs.map(d => ({ ...d.data(), type: 'service' })),
+        ...txsSnap.docs.map(d => ({ ...d.data(), type: 'product' }))
+      ].sort((a,b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
       setHistoryData(combined);
-    } catch (error) {
-       console.error("Erro ao carregar histórico:", error);
-    } finally {
-       setLoadingHistory(false);
-    }
+    } catch (error) { console.error(error); } finally { setLoadingHistory(false); }
   };
 
-  const filteredClients = clients.filter(client => 
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.phone.includes(searchTerm)
-  );
+  const filteredClients = clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.phone.includes(searchTerm));
 
-  if (isMobile) {
-    return (
-      <div className="space-y-6 pb-24 px-4 pt-4 animate-in fade-in duration-500 bg-[#FDFDFD] min-h-screen">
-        <header className="flex flex-col gap-1">
-          <h2 className="text-2xl font-black text-text tracking-tighter uppercase">Meus Clientes</h2>
-          <p className="text-[10px] font-black text-muted uppercase tracking-widest leading-none">Total: {clients.length} cadastrados</p>
-        </header>
-
-        {/* Search Bar Mobile */}
-        <div className="mobile-card p-3 flex items-center gap-3 bg-white border border-secondary shadow-premium">
-          <Search className="text-primary w-4 h-4 shrink-0" />
-          <input 
-            type="text" 
-            placeholder="Buscar por nome ou celular..." 
-            className="bg-transparent flex-1 border-none focus:ring-0 text-xs font-bold text-text placeholder:text-muted p-0"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        {/* Client Cards List */}
-        <div className="space-y-4">
-          {filteredClients.length === 0 ? (
-            <div className="mobile-card p-12 text-center text-muted italic text-sm">Nenhum cliente encontrado.</div>
-          ) : (
-            filteredClients.map((client) => (
-              <div key={client.id} className="mobile-card p-4 border border-secondary/20 bg-white relative overflow-hidden group">
-                <div className="flex gap-4 items-center">
-                  <div className="w-14 h-14 rounded-3xl bg-primary/10 flex items-center justify-center text-primary font-black text-xl shadow-inner border border-primary/5 shrink-0">
-                    {client.name?.[0] || '?'}
-                  </div>
-                  <div className="flex-1 min-w-0" onClick={() => handleHistory(client)}>
-                    <h4 className="font-black text-lg text-text truncate leading-tight uppercase tracking-tighter hover:text-primary cursor-pointer transition-colors">{client.name}</h4>
-                    <div className="flex flex-col gap-1 mt-1">
-                      <div className="flex items-center gap-2 text-[10px] font-black text-muted lowercase">
-                        <Phone className="w-3 h-3 text-accent" />
-                        <span>{formatPhone(client.phone)}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] font-black text-muted lowercase">
-                        <Calendar className="w-3 h-3 text-primary" />
-                        <span>Aniver: {client.birthDate ? format(new Date(client.birthDate), "dd/MM", { locale: ptBR }) : 'Não info.'}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center mt-5 pt-4 border-t border-secondary/10">
-                  <span className="text-[8px] font-black text-muted uppercase tracking-widest italic leading-none shrink-0">
-                    {client.createdAt ? `Desde ${format(new Date(client.createdAt), "MM/yy")}` : ''}
-                  </span>
-                  <div className="flex gap-3">
-                    <a 
-                      href={getWhatsAppLink(client.phone, `Olá ${client.name}, tudo bem? Aqui é do Estúdio da Alê!`)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-10 h-10 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center shadow-premium border border-green-100 transition-all active:scale-95"
-                    >
-                      <MessageCircle className="w-5 h-5" />
-                    </a>
-                    <button onClick={() => handleEdit(client)} className="w-10 h-10 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shadow-premium border border-blue-100 active:scale-95">
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleDelete(client.id)} className="w-10 h-10 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shadow-premium border border-red-100 active:scale-95">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {client.notes && (
-                  <div className="mt-3 p-2 bg-secondary/5 rounded-xl border border-secondary/10 text-[9px] font-bold text-muted italic flex items-center gap-2">
-                    <Info className="w-3 h-3 shrink-0" />
-                    <span className="truncate">{client.notes}</span>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Floating Action Button */}
-        <button 
-          onClick={() => { setEditingClient(null); setIsModalOpen(true); }}
-          className="fab-button"
-        >
-          <Plus className="w-8 h-8" />
-        </button>
-
-        {renderModal()}
-      </div>
-    );
-  }
-
-  // DESKTOP VIEW
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="flex justify-between items-center">
+    <div className="space-y-12 pb-24 px-4 pt-4 bg-background min-h-screen lg:px-8 animate-in fade-in duration-700">
+      <header className="flex justify-between items-end border-b border-white/5 pb-8">
         <div>
-          <h2 className="text-3xl font-black text-text tracking-tighter uppercase">Clientes</h2>
-          <p className="text-muted mt-1 font-bold">Gerencie sua base de clientes e histórico de atendimentos.</p>
+           <h2 className="industrial-header">Dossiê de <span className="metallic-gold">Clientes</span></h2>
+           <p className="text-[10px] font-black text-muted uppercase tracking-[0.5em] mt-2 opacity-40">Client Database • {clients.length} Unidades</p>
         </div>
-        <button 
-          onClick={() => { setEditingClient(null); setIsModalOpen(true); }}
-          className="btn-primary flex items-center gap-2 py-3 px-8 shadow-premium"
-        >
-          <Plus className="w-5 h-5" />
-          Novo Cliente
+        <button onClick={() => { setEditingClient(null); setIsModalOpen(true); }} className="btn-accent px-10 py-5 rounded-3xl shadow-2xl flex items-center gap-3">
+           <Plus className="w-6 h-6" /> Novo Cliente
         </button>
       </header>
 
-      <div className="glass-card p-4 flex items-center gap-4 bg-white/70 shadow-premium border border-secondary/30">
-        <Search className="text-primary w-5 h-5" />
-        <input 
-          type="text" 
-          placeholder="Buscar por nome ou telefone..." 
-          className="bg-transparent flex-1 border-none focus:ring-0 text-text placeholder:text-muted font-bold"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
+      <div className="glass-card p-10 bg-secondary/20 border-white/5 flex items-center gap-6">
+         <Search className="w-6 h-6 text-accent" />
+         <input type="text" placeholder="LOCALIZAR POR NOME OU REGISTRO..." className="input-field py-5 bg-primary border-none shadow-inner" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
       </div>
 
-      <div className="glass-card overflow-x-auto shadow-premium border border-secondary/30">
-        <table className="w-full text-left border-collapse min-w-[800px]">
-          <thead>
-            <tr className="bg-secondary/10 border-b border-secondary">
-              <th className="px-6 py-4 font-black text-[10px] text-muted uppercase tracking-widest">Cliente</th>
-              <th className="px-6 py-4 font-black text-[10px] text-muted uppercase tracking-widest">Contato</th>
-              <th className="px-6 py-4 font-black text-[10px] text-muted uppercase tracking-widest">Aniversário</th>
-              <th className="px-6 py-4 font-black text-[10px] text-muted uppercase tracking-widest">Observações</th>
-              <th className="px-6 py-4 font-black text-[10px] text-muted uppercase tracking-widest text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-secondary/30">
-            {filteredClients.map((client) => (
-              <tr key={client.id} className="hover:bg-secondary/5 transition-colors group">
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary font-black text-lg border border-primary/5">
-                      {client.name?.[0] || '?'}
-                    </div>
-                    <div onClick={() => handleHistory(client)} className="cursor-pointer group/name">
-                      <p className="font-black text-text truncate max-w-[150px] uppercase tracking-tighter group-hover/name:text-primary transition-colors">{client.name}</p>
-                      <p className="text-[10px] font-black text-muted uppercase italic tracking-widest opacity-60">Desde {client.createdAt ? format(new Date(client.createdAt), "MMM yyyy", { locale: ptBR }) : 'Antigo'}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-xs font-black text-muted uppercase tracking-tighter">
-                      <Phone className="w-3 h-3 text-accent" />
-                      <span>{formatPhone(client.phone)}</span>
-                    </div>
-                    {client.email && (
-                      <div className="flex items-center gap-2 text-xs font-black text-muted lowercase tracking-tighter">
-                        <Mail className="w-3 h-3 text-primary" />
-                        <span className="truncate max-w-[150px]">{client.email}</span>
-                      </div>
-                    )}
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2 text-xs font-black text-muted">
-                    <Calendar className="w-4 h-4 text-accent" />
-                    <span>{client.birthDate ? format(new Date(client.birthDate), "dd/MM", { locale: ptBR }) : '—'}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="max-w-[200px] truncate text-xs font-bold text-muted italic">
-                    {client.notes || 'Nenhuma observação'}
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                    <a 
-                      href={getWhatsAppLink(client.phone, `Olá ${client.name}, tudo bem? Aqui é do Estúdio da Alê!`)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2.5 bg-green-50 text-green-600 rounded-xl hover:bg-green-100 transition-all active:scale-95 border border-green-100 shadow-sm"
-                    >
-                      <MessageCircle className="w-5 h-5" />
-                    </a>
-                    <button onClick={() => handleEdit(client)} className="p-2.5 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-all active:scale-95 border border-blue-100 shadow-sm">
-                      <Edit2 className="w-5 h-5" />
-                    </button>
-                    <button onClick={() => handleDelete(client.id)} className="p-2.5 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-all active:scale-95 border border-red-100 shadow-sm">
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {filteredClients.map((client) => (
+          <div key={client.id} className="glass-card group p-8 bg-secondary/20 border-white/5 hover:bg-secondary/40 transition-all relative overflow-hidden">
+             <div className="flex justify-between items-start mb-8">
+                <div className="w-16 h-16 rounded-[2rem] bg-accent/10 border border-accent/20 flex items-center justify-center font-black text-2xl text-accent shadow-2xl">{client.name?.[0]}</div>
+                <div className="flex gap-2">
+                   <a href={getWhatsAppLink(client.phone)} target="_blank" rel="noreferrer" className="w-12 h-12 rounded-2xl bg-green-500/10 text-green-400 flex items-center justify-center hover:bg-green-500 hover:text-white transition-all"><MessageCircle className="w-5 h-5" /></a>
+                   <button onClick={() => handleHistory(client)} className="w-12 h-12 rounded-2xl bg-white/5 text-muted flex items-center justify-center hover:bg-accent hover:text-white transition-all"><Clock className="w-5 h-5" /></button>
+                </div>
+             </div>
+             <div className="space-y-1">
+                <h4 className="text-xl font-black text-text uppercase tracking-tighter truncate">{client.name}</h4>
+                <p className="text-[10px] font-black text-muted uppercase tracking-widest">{formatPhone(client.phone)}</p>
+             </div>
+             <div className="mt-8 pt-8 border-t border-white/5 flex justify-between items-center group-hover:border-accent/20 transition-all">
+                <div className="flex items-center gap-2 text-[9px] font-black text-muted uppercase tracking-widest">
+                   <Calendar className="w-4 h-4 text-accent" />
+                   {client.birthDate ? format(new Date(client.birthDate), "dd MMM", { locale: ptBR }) : 'S/ Data'}
+                </div>
+                <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                   <button onClick={() => { setEditingClient(client); setFormData(client as any); setIsModalOpen(true); }} className="p-3 bg-white/5 rounded-xl text-muted hover:text-white"><Edit3 className="w-4 h-4" /></button>
+                   <button onClick={async () => { if(confirm('Excluir?')) await deleteDoc(doc(db, 'clients', client.id)); }} className="p-3 bg-white/5 rounded-xl text-muted hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
+                </div>
+             </div>
+             {client.notes && (
+               <div className="mt-6 flex gap-3 p-4 bg-primary/20 rounded-2xl border border-white/5 opacity-60 group-hover:opacity-100 transition-opacity">
+                  <Info className="w-4 h-4 text-accent shrink-0" />
+                  <p className="text-[10px] font-black uppercase text-muted leading-relaxed line-clamp-2">{client.notes}</p>
+               </div>
+             )}
+          </div>
+        ))}
       </div>
-      {renderHistoryModal()}
+
+      {/* History Sidebar Modal */}
+      {viewingHistory && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[150] flex justify-end">
+           <div className="bg-primary/95 w-full max-w-xl h-full p-12 border-l border-white/10 shadow-[0_0_100px_rgba(0,0,0,1)] animate-in slide-in-from-right duration-500 overflow-y-auto">
+              <button onClick={() => setViewingHistory(null)} className="absolute top-12 right-12 text-muted hover:text-white"><XCircle className="w-10 h-10" /></button>
+              <div className="mb-16">
+                 <h3 className="industrial-header text-4xl mb-4">{viewingHistory.name}</h3>
+                 <p className="text-[10px] font-black text-accent uppercase tracking-[0.5em] opacity-60 italic">Profile Logs • Intelligence Center</p>
+              </div>
+              <div className="space-y-10">
+                 {loadingHistory ? <div className="text-center py-20 text-muted uppercase font-black text-xs animate-pulse">Acessando Arquivos...</div> : 
+                  historyData.map((item, i) => (
+                   <div key={i} className="relative pl-10 border-l border-white/5 pb-10 last:pb-0">
+                      <div className="absolute -left-1.5 top-0 w-3 h-3 rounded-full bg-accent shadow-[0_0_15px_rgba(212,175,55,0.4)]" />
+                      <div className="glass-card p-6 bg-secondary/20 border-white/5">
+                         <div className="flex justify-between items-start mb-4">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-muted">{format(new Date(item.date || item.createdAt), 'dd MMMM yyyy', { locale: ptBR })}</span>
+                            <span className="text-lg font-black text-accent tracking-tighter">{formatCurrency(item.price || item.amount)}</span>
+                         </div>
+                         <h5 className="text-sm font-black text-text uppercase tracking-tighter mb-1">{item.service || item.description}</h5>
+                         <p className="text-[9px] font-black text-muted uppercase tracking-widest opacity-40">{item.type === 'service' ? 'Procedimento Executado' : 'Aquisição de Produto'}</p>
+                      </div>
+                   </div>
+                 ))}
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* New/Edit Client Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[150] flex items-center justify-center p-4">
+           <div className="bg-primary/95 border border-white/10 rounded-[4rem] w-full max-w-xl p-12 shadow-2xl relative">
+              <button onClick={() => setIsModalOpen(false)} className="absolute top-12 right-12 text-muted hover:text-white"><XCircle className="w-8 h-8" /></button>
+              <h3 className="industrial-header text-3xl mb-10">Ficha de <span className="metallic-gold">Registro</span></h3>
+              <form onSubmit={handleSubmit} className="space-y-8">
+                 <div className="space-y-6">
+                    <label className="text-[10px] font-black text-muted uppercase tracking-[0.4em] ml-2 block">Identificação e Contato</label>
+                    <input required className="input-field py-5 bg-background border-white/5" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="NOME COMPLETO" />
+                    <div className="grid grid-cols-2 gap-4">
+                       <input required className="input-field py-5 bg-background border-white/5" value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} placeholder="TELEFONE" />
+                       <input type="date" className="input-field py-5 bg-background border-white/5" value={formData.birthDate} onChange={(e) => setFormData({...formData, birthDate: e.target.value})} />
+                    </div>
+                    <textarea className="input-field py-5 bg-background border-white/5 min-h-[150px]" value={formData.notes} onChange={(e) => setFormData({...formData, notes: e.target.value})} placeholder="OBSERVAÇÕES E PREFERÊNCIAS..." />
+                 </div>
+                 <div className="flex gap-4">
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary flex-1">Abortar</button>
+                    <button type="submit" className="btn-accent flex-1">Finalizar Cadastro</button>
+                 </div>
+              </form>
+           </div>
+        </div>
+      )}
     </div>
   );
-
-  function renderHistoryModal() {
-    return (
-      <>
-        {viewingHistory && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[60] flex items-center justify-end">
-            <div className="bg-[#FDFDFD] h-full w-full max-w-md p-8 shadow-2xl animate-in slide-in-from-right duration-300 relative overflow-y-auto">
-               <button onClick={() => setViewingHistory(null)} className="absolute top-6 right-6 p-2 hover:bg-secondary/20 rounded-full transition-colors">
-                  <XCircle className="w-6 h-6 text-muted" />
-               </button>
-
-               <div className="mb-10">
-                  <span className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-2 block">Histórico do Cliente</span>
-                  <h3 className="text-3xl font-black text-text uppercase tracking-tighter leading-none mb-4">{viewingHistory.name}</h3>
-                  <div className="flex flex-wrap gap-2">
-                     <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-widest">Desde {viewingHistory.createdAt ? format(new Date(viewingHistory.createdAt), 'yyyy') : '---'}</span>
-                     <span className="px-3 py-1 bg-accent/10 text-accent text-[10px] font-black rounded-full uppercase tracking-widest">{viewingHistory.phone}</span>
-                  </div>
-               </div>
-
-               <div className="space-y-6">
-                  {loadingHistory ? (
-                     <div className="py-20 text-center space-y-4">
-                        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-                        <p className="text-[10px] font-black text-muted uppercase tracking-widest">Carregando registro...</p>
-                     </div>
-                  ) : historyData.length === 0 ? (
-                     <div className="py-20 text-center border-2 border-dashed border-secondary/20 rounded-[2rem] bg-secondary/5">
-                        <p className="text-[10px] font-black text-muted uppercase tracking-widest">Nenhum registro encontrado.</p>
-                     </div>
-                  ) : (
-                     historyData.map((item, idx) => (
-                        <div key={idx} className="relative pl-6 pb-6 border-l-2 border-secondary/20 last:pb-0">
-                           <div className="absolute top-0 -left-[9px] w-4 h-4 rounded-full bg-white border-2 border-primary flex items-center justify-center">
-                              {item.type === 'service' ? <Scissors className="w-2 h-2 text-primary" /> : <ShoppingBag className="w-2 h-2 text-accent" />}
-                           </div>
-                           
-                           <div className="bg-white p-5 rounded-[1.5rem] border border-secondary/20 shadow-sm transition-all hover:shadow-md">
-                              <div className="flex justify-between items-start mb-2">
-                                 <div>
-                                    <span className={cn(
-                                       "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md mb-1 inline-block",
-                                       item.type === 'service' ? "bg-primary/10 text-primary" : "bg-accent/10 text-accent"
-                                    )}>
-                                       {item.type === 'service' ? 'Procedimento' : 'Compra (Produto)'}
-                                    </span>
-                                    <h5 className="font-black text-text uppercase tracking-tighter leading-tight">{item.serviceName || item.description || item.productName || 'Venda'}</h5>
-                                 </div>
-                                 <p className="text-sm font-black text-primary tracking-tighter">
-                                    {item.price ? `R$ ${item.price}` : item.amount ? `R$ ${item.amount}` : '—'}
-                                 </p>
-                              </div>
-
-                              <div className="flex items-center justify-between text-[9px] font-bold text-muted uppercase tracking-widest mt-4 pt-4 border-t border-secondary/5">
-                                 <div className="flex items-center gap-1.5">
-                                    <Clock className="w-3 h-3 opacity-40" />
-                                    <span>{format(new Date(item.date || item.createdAt), 'dd MMMM, yyyy', { locale: ptBR })}</span>
-                                 </div>
-                                 {item.staffName && (
-                                    <div className="flex items-center gap-1.5">
-                                       <User className="w-3 h-3 opacity-40" />
-                                       <span>Prof: {item.staffName}</span>
-                                    </div>
-                                 )}
-                              </div>
-                           </div>
-                        </div>
-                     ))
-                  )}
-               </div>
-            </div>
-          </div>
-        )}
-      </>
-    );
-  }
-
-  function renderModal() {
-    return (
-      <>
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden">
-              <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-secondary/20 rounded-full transition-colors">
-                <XCircle className="w-6 h-6 text-muted" />
-              </button>
-              
-              <h3 className="text-2xl font-black tracking-tighter mb-6 uppercase flex items-center gap-3">
-                <User className="w-8 h-8 text-primary" />
-                {editingClient ? 'Editar Cliente' : 'Novo Cliente'}
-              </h3>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Nome Completo</label>
-                    <input 
-                      required
-                      type="text" 
-                      className="input-field py-3" 
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Telefone (DDD + Numero)</label>
-                    <input 
-                      required
-                      type="text" 
-                      className="input-field py-3" 
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Data de Nascimento</label>
-                    <input 
-                      type="date" 
-                      className="input-field py-3" 
-                      value={formData.birthDate}
-                      onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Observações Privadas</label>
-                    <textarea 
-                      className="input-field min-h-[100px] py-3 text-xs" 
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      placeholder="Ex: Prefere tons nudes, Alérgica a esmalte X..."
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-3 mt-8">
-                  <button 
-                    type="button" 
-                    onClick={() => setIsModalOpen(false)}
-                    className="btn-secondary text-xs font-black uppercase tracking-widest px-8"
-                  >
-                    Sair
-                  </button>
-                  <button type="submit" className="btn-primary text-xs font-black uppercase tracking-widest px-8">
-                    Salvar
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-      </>
-    );
-  }
 }
