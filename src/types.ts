@@ -1,11 +1,15 @@
 export interface Staff {
   id: string;
+  uid?: string; // Link to Firebase Auth UID
   name: string;
   phone: string;
-  email?: string;
-  specialties: string[];
+  email: string;
+  password?: string; // Stored for admin reference (optional/not recommended but requested)
+  specialty: string;
   commission: number;
+  role: 'admin' | 'agente' | 'staff';
   status: 'active' | 'inactive';
+  enabledCategories?: string[];
   photoUrl?: string;
   createdAt: string;
 }
@@ -46,6 +50,7 @@ export interface Appointment {
   notes?: string;
   price: number;
   commissionAmount: number;
+  marker?: string;
   createdAt: string;
 }
 
@@ -56,6 +61,9 @@ export interface Transaction {
   amount: number;
   date: string;
   description?: string;
+  creatorId?: string;
+  creatorName?: string;
+  professionalId?: string;
   appointmentId?: string;
   createdAt: string;
 }

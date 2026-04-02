@@ -59,6 +59,10 @@
     }
   },
   "devDependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "astral-regex": "^2.0.0",
     "autoprefixer": "^10.4.21",
     "concurrently": "^8.2.2",
     "electron": "^30.5.1",

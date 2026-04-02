@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth } from './firebase';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut as firebaseSignOut, signInWithEmailAndPassword, createUserWithEmailAndPassword, User, setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 
 // Email fixo do administrador master - sem dependência de Firestore para roles
 const ADMIN_EMAIL = '7185062361@estudioale.com';
@@ -11,6 +11,9 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isAgente: boolean;
+  signIn: (e: string, p: string, remember?: boolean) => Promise<any>;
+  signUp: (e: string, p: string, n: string, remember?: boolean) => Promise<any>;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -19,6 +22,9 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isAdmin: false,
   isAgente: false,
+  signIn: async () => {},
+  signUp: async () => {},
+  signOut: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -88,8 +94,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAgente(!adminStatus && profile?.role === 'agente');
   }, [user, profile]);
 
+  // Login
+  const signIn = async (email: string, pass: string, remember: boolean = true) => {
+    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+    return signInWithEmailAndPassword(auth, email.includes('@') ? email : `${email}@estudioale.com`, pass);
+  };
+
+  // Register
+  const signUp = async (email: string, pass: string, name: string, remember: boolean = true) => {
+    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+    const formattedEmail = email.includes('@') ? email : `${email}@estudioale.com`;
+    const res = await createUserWithEmailAndPassword(auth, formattedEmail, pass);
+    
+    // Create initial user doc
+    const { doc, setDoc } = await import('firebase/firestore');
+    const { db } = await import('./firebase');
+    await setDoc(doc(db, 'users', res.user.uid), {
+      name,
+      email: formattedEmail,
+      role: 'staff',
+      createdAt: new Date().toISOString()
+    });
+    
+    return res;
+  };
+
+  // Logout
+  const signOut = async () => {
+    return firebaseSignOut(auth);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin, isAgente }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAdmin, isAgente, signIn, signUp, signOut }}>
       {!loading && children}
     </AuthContext.Provider>
   );

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Estudio Ale</string>
+    <string name="title_activity_main">Estudio Ale</string>
+    <string name="package_name">com.estudioale.erp</string>
+    <string name="custom_url_scheme">com.estudioale.erp</string>
+</resources>

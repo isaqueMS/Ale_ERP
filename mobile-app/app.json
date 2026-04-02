@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Estúdio Alê",
+    "slug": "estudio-ale-erp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FFFDFB",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFDFB"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.estudioale.erp"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFFDFB"
+      },
+      "package": "com.estudioale.erp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5db03eba-09da-414d-acba-b092ca2bd500"
+      }
+    }
+  }
+}

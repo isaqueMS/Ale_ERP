@@ -1,360 +1,235 @@
-import React from 'react';
-import { Plus, Search, Filter, ArrowUpCircle, ArrowDownCircle, Banknote, Calendar, User, Trash2, Check, MessageSquare, Receipt, XCircle } from 'lucide-react';
-import { collection, addDoc, onSnapshot, query, orderBy, where, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Plus, Minus, TrendingUp, TrendingDown, DollarSign, 
+  Search, Filter, Trash2, Edit3, Calendar, 
+  ArrowUpRight, ArrowDownRight, Wallet, X,
+  Clock, Download, ChevronRight, FileText, ArrowRight
+} from 'lucide-react';
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { Transaction, Client, Staff } from '../types';
+import { Transaction } from '../types';
+import { format, parseISO, isToday } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { cn, formatCurrency } from '../lib/utils';
 import { useAuth } from '../lib/auth';
-import { format, isSameDay, startOfMonth, endOfMonth, subMonths, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 export default function CashRegister() {
-  const { user, profile, isAdmin } = useAuth();
-  const [transactions, setTransactions] = React.useState<Transaction[]>([]);
-  const [clients, setClients] = React.useState<Client[]>([]);
-  const [staff, setStaff] = React.useState<Staff[]>([]);
-  const [isModalOpen, setIsModalOpen] = React.useState(false);
-  const [selectedStaff, setSelectedStaff] = React.useState<string>('all');
-  const [dateFilter, setDateFilter] = React.useState(format(new Date(), 'yyyy-MM-dd'));
-  const [editingNoteId, setEditingNoteId] = React.useState<string | null>(null);
-  const [noteValue, setNoteValue] = React.useState('');
-  const [isMobile, setIsMobile] = React.useState(window.innerWidth < 768);
-  const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
+  const { user } = useAuth();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalType, setModalType] = useState<'income' | 'expense'>('income');
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  React.useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  const [formData, setFormData] = React.useState({
-    type: 'income' as const,
-    category: 'Serviço',
-    amount: 0,
+  const [formData, setFormData] = useState({
+    category: '',
+    amount: '',
     description: '',
-    date: format(new Date(), 'yyyy-MM-dd'),
-    clientId: '',
-    clientName: ''
+    date: format(new Date(), 'yyyy-MM-dd')
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(q, (snapshot) => {
       setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
     });
-
-    onSnapshot(collection(db, 'clients'), (snapshot) => {
-      setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
-    });
-
-    onSnapshot(collection(db, 'staff'), (snapshot) => {
-      setStaff(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Staff)));
-    });
-
-    return () => unsubscribe();
+    return unsub;
   }, []);
 
-  const filteredTransactions = React.useMemo(() => {
-    return transactions.filter(t => {
-      const isMyTransaction = t.createdBy === user?.uid;
-      const isAdminView = isAdmin || isMyTransaction;
-      if (!isAdminView) return false;
-
-      // Filtro de Data
-      const tDateString = format(new Date(t.date || t.createdAt), 'yyyy-MM-dd');
-      if (tDateString !== dateFilter) return false;
-
-      // Filtro de Atendente
-      if (selectedStaff === 'all') return true;
-      if (selectedStaff === 'admin_alexandra') {
-        return t.createdBy === user?.uid || (t.creatorName?.toLowerCase() || '').includes('alexandra');
-      }
-      const staffMember = staff.find(s => s.id === selectedStaff);
-      const staffName = staffMember?.name?.toLowerCase() || '';
-      return t.createdBy === selectedStaff || (t.creatorName?.toLowerCase() || '').includes(staffName);
-    });
-  }, [transactions, selectedStaff, dateFilter, isAdmin, user, staff]);
-
-  const totals = React.useMemo(() => {
-    return filteredTransactions.reduce((acc, t) => {
+  const totals = useMemo(() => {
+    return transactions.reduce((acc, t) => {
       const amount = Number(t.amount) || 0;
       if (t.type === 'income') acc.income += amount;
       else acc.expense += amount;
       acc.balance = acc.income - acc.expense;
       return acc;
     }, { income: 0, expense: 0, balance: 0 });
-  }, [filteredTransactions]);
+  }, [transactions]);
+
+  const filteredTransactions = transactions.filter(t => 
+    t.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    t.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const client = clients.find(c => c.id === formData.clientId);
-      const transactionDate = new Date(`${formData.date}T12:00:00`);
+    const data = {
+      type: modalType,
+      category: formData.category,
+      amount: Number(formData.amount),
+      description: formData.description,
+      date: formData.date,
+      creatorId: user?.uid,
+      creatorName: user?.name,
+      createdAt: new Date().toISOString()
+    };
 
-      await addDoc(collection(db, 'transactions'), {
-        ...formData,
-        date: transactionDate.toISOString(),
-        clientName: client?.name || '',
-        createdAt: new Date().toISOString(),
-        createdBy: user?.uid,
-        creatorName: profile?.name || user?.email?.split('@')[0] || 'Atendente'
-      });
-      setIsModalOpen(false);
-      setFormData({ type: 'income', category: 'Serviço', amount: 0, description: '', date: format(new Date(), 'yyyy-MM-dd'), clientId: '', clientName: '' });
-    } catch (error) {
-      console.error('Error adding transaction:', error);
-    }
+    if (editingTransaction) await updateDoc(doc(db, 'transactions', editingTransaction.id), data);
+    else await addDoc(collection(db, 'transactions'), data);
+    
+    setIsModalOpen(false);
+    setEditingTransaction(null);
+    setFormData({ category: '', amount: '', description: '', date: format(new Date(), 'yyyy-MM-dd') });
   };
-
-  const handleToggleVerify = async (id: string, current: boolean) => {
-    if (!isAdmin) return;
-    await updateDoc(doc(db, 'transactions', id), { isVerified: !current });
-  };
-
-  const handleSaveObservation = async (id: string) => {
-    await updateDoc(doc(db, 'transactions', id), { observation: noteValue });
-    setEditingNoteId(null);
-    setNoteValue('');
-  };
-
-  if (isMobile) {
-    return (
-      <div className="space-y-6 pb-24 px-4 pt-4 min-h-screen bg-[#FDFDFD]">
-        <header className="flex flex-col gap-1">
-          <h2 className="text-2xl font-black text-text tracking-tighter uppercase">Caixa</h2>
-          <div className="flex items-center gap-2">
-            <Calendar className="w-3 h-3 text-muted" />
-            <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-transparent border-none text-[10px] font-black uppercase text-muted focus:ring-0 p-0" />
-          </div>
-        </header>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="mobile-card p-4 border-l-4 border-green-500 bg-green-50/20">
-            <p className="text-[9px] font-black text-green-600 uppercase mb-1">Entradas</p>
-            <h4 className="text-lg font-black text-text">{formatCurrency(totals.income)}</h4>
-          </div>
-          <div className="mobile-card p-4 border-l-4 border-red-500 bg-red-50/20">
-            <p className="text-[9px] font-black text-red-600 uppercase mb-1">Saídas</p>
-            <h4 className="text-lg font-black text-text">{formatCurrency(totals.expense)}</h4>
-          </div>
-          <div className="mobile-card p-4 border-l-4 border-accent bg-accent/5 col-span-2">
-            <div className="flex justify-between items-center">
-              <div>
-                <p className="text-[9px] font-black text-accent uppercase mb-1">Saldo do Filtro</p>
-                <h4 className="text-xl font-black text-text">{formatCurrency(totals.balance)}</h4>
-              </div>
-              <Receipt className="w-6 h-6 text-accent/30" />
-            </div>
-          </div>
-        </div>
-
-        {isAdmin && (
-          <div className="mobile-card p-3 bg-white border border-secondary/20 shadow-premium">
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-primary" />
-              <select value={selectedStaff} onChange={(e) => setSelectedStaff(e.target.value)} className="bg-transparent border-none text-[10px] font-black uppercase text-text focus:ring-0 w-full">
-                <option value="all">Filtro: Todos</option>
-                <option value="admin_alexandra">Alexandra (Eu)</option>
-                {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-4">
-          <h3 className="text-xs font-black text-muted uppercase tracking-widest px-1">Movimentações</h3>
-          {filteredTransactions.length === 0 ? (
-            <div className="mobile-card p-12 text-center text-muted italic text-sm">Nenhum lançamento para esta data.</div>
-          ) : (
-            filteredTransactions.map(t => (
-              <div key={t.id} className="mobile-card p-4 relative overflow-hidden group border border-secondary/20 bg-white">
-                {t.isVerified && <div className="absolute top-0 left-0 w-1.5 h-full bg-green-500" />}
-                <div className="flex justify-between items-start mb-3">
-                   <div className="flex items-center gap-3">
-                     <div className={cn("w-10 h-10 rounded-full flex items-center justify-center", t.type === 'income' ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600")}>
-                       {t.type === 'income' ? <ArrowUpCircle className="w-6 h-6" /> : <ArrowDownCircle className="w-6 h-6" />}
-                     </div>
-                     <div>
-                       <p className="text-[10px] font-black uppercase text-muted mb-0.5">{t.category}</p>
-                       <h5 className="font-bold text-sm text-text truncate max-w-[150px]">{t.description}</h5>
-                     </div>
-                   </div>
-                   <div className="text-right">
-                     <p className={cn("font-black text-sm", t.type === 'income' ? "text-green-600" : "text-red-600")}>
-                        {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
-                     </p>
-                     <span className="text-[9px] font-bold text-muted italic opacity-60">{format(new Date(t.date || t.createdAt), 'HH:mm')}</span>
-                   </div>
-                </div>
-                <div className="flex justify-between items-center pt-3 border-t border-secondary/10">
-                  <div className="flex items-center gap-2">
-                    <span className="bg-primary/5 text-primary text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">{t.creatorName?.split(' ')[0] || 'Atend'}</span>
-                    {t.clientName && <span className="text-[9px] text-muted italic">Cli: {t.clientName.split(' ')[0]}</span>}
-                  </div>
-                  <div className="flex gap-2">
-                    {isAdmin && <button onClick={() => handleToggleVerify(t.id, !!t.isVerified)} className={cn("p-2 rounded-xl transition-all", t.isVerified ? "bg-green-100 text-green-600" : "bg-white shadow-premium")}><Check className="w-4 h-4" /></button>}
-                    <button onClick={() => { setEditingNoteId(t.id); setNoteValue(t.observation || ''); }} className="p-2 bg-yellow-50 text-yellow-600 rounded-xl"><MessageSquare className="w-4 h-4" /></button>
-                    {isAdmin && (
-                      deleteConfirm === t.id ? (
-                        <button onClick={async () => { await deleteDoc(doc(db, 'transactions', t.id)); setDeleteConfirm(null); }} className="p-2 bg-red-500 text-white rounded-xl text-[9px] font-black uppercase">EXCLUIR?</button>
-                      ) : (
-                        <button onClick={() => setDeleteConfirm(t.id)} className="p-2 bg-red-50 text-red-500 rounded-xl"><Trash2 className="w-4 h-4" /></button>
-                      )
-                    )}
-                  </div>
-                </div>
-                {editingNoteId === t.id && (
-                  <div className="mt-3 p-3 bg-yellow-50 rounded-2xl flex gap-2">
-                    <input autoFocus className="input-field py-1.5 text-xs" value={noteValue} onChange={e => setNoteValue(e.target.value)} />
-                    <button onClick={() => handleSaveObservation(t.id)} className="btn-primary py-1.5 px-3 text-[10px]">SALVAR</button>
-                  </div>
-                )}
-                {t.observation && editingNoteId !== t.id && (
-                  <div className="mt-2 text-[9px] text-yellow-800 bg-yellow-100/30 p-2 rounded-lg italic">Obs: {t.observation}</div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-        <button onClick={() => setIsModalOpen(true)} className="fab-button"><Plus className="w-8 h-8" /></button>
-        {renderModal()}
-      </div>
-    );
-  }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center bg-white rounded-xl border border-secondary shadow-sm p-4 gap-4">
-             <div className="flex items-center gap-2">
-               <Calendar className="w-4 h-4 text-primary" />
-               <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="bg-transparent border-none text-xs font-black uppercase text-text focus:ring-0 p-0" />
-             </div>
-             {isAdmin && (
-               <div className="flex items-center gap-2 border-l border-secondary pl-4">
-                 <User className="w-4 h-4 text-primary" />
-                 <select value={selectedStaff} onChange={(e) => setSelectedStaff(e.target.value)} className="bg-transparent border-none text-xs font-black uppercase text-text focus:ring-0 p-0">
-                    <option value="all">TODOS ATENDENTES</option>
-                    <option value="admin_alexandra">EU (ALEXANDRA)</option>
-                    {staff.map(s => <option key={s.id} value={s.id}>{s.name.toUpperCase()}</option>)}
-                 </select>
-               </div>
-             )}
-          </div>
+    <div className="space-y-10 animate-fade-up pb-20">
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
+        <div>
+           <h2 className="text-3xl sm:text-4xl font-black text-slate-800 uppercase tracking-tighter">Fluxo de Caixa</h2>
+           <p className="text-slate-400 font-bold text-xs sm:text-sm uppercase tracking-widest mt-1">Controle financeiro em tempo real.</p>
         </div>
-        <button onClick={() => setIsModalOpen(true)} className="btn-primary flex items-center gap-2 px-8 py-3 shadow-premium hover:scale-105 transition-all text-xs font-black uppercase tracking-widest"><Plus className="w-5 h-5" />Novo Lançamento</button>
+        <div className="flex gap-4 w-full sm:w-auto">
+           <button onClick={() => { setModalType('income'); setIsModalOpen(true); }} className="flex-1 sm:flex-none h-14 sm:h-16 px-6 sm:px-8 rounded-2xl bg-emerald-500 text-white font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95">
+              <Plus className="w-5 h-5" /> Receita
+           </button>
+           <button onClick={() => { setModalType('expense'); setIsModalOpen(true); }} className="flex-1 sm:flex-none h-14 sm:h-16 px-6 sm:px-8 rounded-2xl bg-red-400 text-white font-black uppercase text-[10px] sm:text-xs tracking-widest shadow-lg shadow-red-100 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95">
+              <Minus className="w-5 h-5" /> Despesa
+           </button>
+        </div>
+      </header>
+
+      {/* BALANCE OVERVIEW */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+         <BalanceCard title="Saldo Atual" value={totals.balance} icon={Wallet} color="pink" isMain />
+         <BalanceCard title="Total Entradas" value={totals.income} icon={ArrowUpRight} color="green" />
+         <BalanceCard title="Total Saídas" value={totals.expense} icon={ArrowDownRight} color="red" />
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="glass-card p-6 border-l-4 border-green-500 bg-green-50/10">
-          <p className="text-xs font-black text-green-600 uppercase tracking-widest mb-2">Entradas do Filtro</p>
-          <h3 className="text-3xl font-black text-text">{formatCurrency(totals.income)}</h3>
+      {/* TRANSACTION LIST */}
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+           <div className="relative w-full md:w-96 group">
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-[#FFB6C1] transition-transform group-focus-within:scale-110" />
+              <input 
+                type="text" 
+                placeholder="Filtrar lançamentos..." 
+                className="input-premium pl-14 pr-6 !py-4 shadow-sm"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+           </div>
+           <button className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-white px-8 py-5 rounded-2xl border border-slate-100 shadow-sm hover:bg-[#FFB6C1] hover:text-white transition-all active:scale-95 group">
+              <Download className="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" /> Exportar Relatório PDF
+           </button>
         </div>
-        <div className="glass-card p-6 border-l-4 border-red-500 bg-red-50/10">
-          <p className="text-xs font-black text-red-600 uppercase tracking-widest mb-2">Saídas do Filtro</p>
-          <h3 className="text-3xl font-black text-text">{formatCurrency(totals.expense)}</h3>
-        </div>
-        <div className="glass-card p-6 border-l-4 border-accent bg-accent/5">
-          <p className="text-xs font-black text-accent uppercase tracking-widest mb-2">Saldo Líquido</p>
-          <h3 className="text-3xl font-black text-text">{formatCurrency(totals.balance)}</h3>
+
+        <div className="card-premium overflow-hidden border border-pink-50/50 text-slate-800">
+           <div className="divide-y divide-slate-50">
+              {filteredTransactions.map(t => (
+                <div key={t.id} className="p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all hover:bg-[#FFFDFB] group relative">
+                   <div className="flex items-center gap-6">
+                      <div className={cn(
+                        "w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105 group-hover:rotate-3",
+                        t.type === 'income' ? "bg-emerald-50 text-emerald-500 border border-emerald-100" : "bg-red-50 text-red-500 border border-red-100"
+                      )}>
+                         {t.type === 'income' ? <ArrowUpRight className="w-6 h-6" /> : <ArrowDownRight className="w-6 h-6" />}
+                      </div>
+                      <div>
+                         <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">{format(parseISO(t.date), "dd MMM, yyyy", { locale: ptBR })}</span>
+                            {isToday(parseISO(t.date)) && <span className="text-[8px] font-black text-emerald-500 uppercase bg-emerald-50 px-2.5 py-1 rounded-full animate-pulse">Hoje</span>}
+                         </div>
+                         <h4 className="text-lg font-black text-white mix-blend-difference uppercase leading-none mb-1 tracking-tight">{t.category}</h4>
+                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate max-w-[200px] italic">{t.description || 'Nenhuma descrição informada'}</p>
+                      </div>
+                   </div>
+
+                   <div className="flex items-center gap-8 justify-between md:justify-end">
+                      <div className="text-right">
+                         <p className={cn(
+                           "text-2xl font-black font-mono tracking-tighter leading-none italic",
+                           t.type === 'income' ? "text-emerald-500" : "text-red-500"
+                         )}>
+                           {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
+                         </p>
+                         <div className="flex items-center justify-end gap-1.5 mt-1.5 opacity-60">
+                            <Clock className="w-3 h-3 text-slate-300" />
+                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Registrado por {t.creatorName || 'Sistema'}</p>
+                         </div>
+                      </div>
+
+                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                         <button onClick={() => { setEditingTransaction(t); setFormData({ category: t.category, amount: t.amount.toString(), description: t.description || '', date: t.date }); setModalType(t.type); setIsModalOpen(true); }} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-[#FFB6C1] rounded-xl shadow-sm transition-all active:scale-90"><Edit3 className="w-4 h-4" /></button>
+                         <button onClick={() => deleteDoc(doc(db, 'transactions', t.id))} className="p-3 bg-white border border-slate-100 text-slate-300 hover:text-red-400 rounded-xl shadow-sm transition-all active:scale-90"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                   </div>
+                </div>
+              ))}
+              {filteredTransactions.length === 0 && (
+                <div className="p-20 text-center">
+                   <div className="w-20 h-20 bg-slate-50 rounded-[2rem] flex items-center justify-center mx-auto mb-6">
+                      <FileText className="w-8 h-8 text-slate-200" />
+                   </div>
+                   <h3 className="text-xl font-black text-slate-300 uppercase tracking-tighter italic">Nenhum lançamento encontrado</h3>
+                   <p className="text-xs font-bold text-slate-200 uppercase tracking-widest mt-2">{searchTerm ? 'Tente buscar por outra categoria' : 'Comece registrando uma nova operação'}</p>
+                </div>
+              )}
+           </div>
         </div>
       </div>
 
-      <div className="glass-card overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-secondary/10 border-b border-secondary">
-              <th className="text-left p-4 text-[10px] font-black uppercase tracking-widest text-muted">Status</th>
-              <th className="text-left p-4 text-[10px] font-black uppercase tracking-widest text-muted">Data/Hora</th>
-              <th className="text-left p-4 text-[10px] font-black uppercase tracking-widest text-muted">Categoria</th>
-              <th className="text-left p-4 text-[10px] font-black uppercase tracking-widest text-muted">Descrição</th>
-              <th className="text-left p-4 text-[10px] font-black uppercase tracking-widest text-muted">Atendente</th>
-              <th className="text-right p-4 text-[10px] font-black uppercase tracking-widest text-muted">Valor</th>
-              <th className="text-right p-4 text-[10px] font-black uppercase tracking-widest text-muted">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredTransactions.map(t => (
-              <tr key={t.id} className="border-b border-secondary/50 hover:bg-secondary/5 transition-colors">
-                <td className="p-4">
-                  {isAdmin ? (
-                    <button onClick={() => handleToggleVerify(t.id, !!t.isVerified)}>
-                      <Check className={cn("w-5 h-5", t.isVerified ? "text-green-500" : "text-secondary")} />
-                    </button>
-                  ) : <Check className={cn("w-5 h-5", t.isVerified ? "text-green-500" : "text-secondary")} />}
-                </td>
-                <td className="p-4 text-xs font-bold text-text">{format(new Date(t.date || t.createdAt), 'dd/MM/yyyy HH:mm')}</td>
-                <td className="p-4">
-                   <span className={cn("text-[10px] font-black px-3 py-1 rounded-full uppercase", t.type === 'income' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{t.category}</span>
-                </td>
-                <td className="p-4">
-                  <p className="text-sm font-bold text-text">{t.description}</p>
-                  {t.clientName && <p className="text-[10px] text-muted font-bold">Cliente: {t.clientName}</p>}
-                </td>
-                <td className="p-4 text-xs font-bold text-muted uppercase">{t.creatorName || 'Atendente'}</td>
-                <td className="p-4 text-right">
-                  <span className={cn("text-sm font-black", t.type === 'income' ? "text-green-600" : "text-red-600")}>
-                    {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
-                  </span>
-                </td>
-                <td className="p-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button onClick={() => { setEditingNoteId(t.id); setNoteValue(t.observation || ''); }} className="p-2 hover:bg-yellow-50 text-yellow-600 rounded-xl transition-colors"><MessageSquare className="w-4 h-4" /></button>
-                    {isAdmin && (
-                      deleteConfirm === t.id ? (
-                        <button onClick={async () => { await deleteDoc(doc(db, 'transactions', t.id)); setDeleteConfirm(null); }} className="p-2 bg-red-500 text-white rounded-xl text-[9px] font-black uppercase">EXCLUIR?</button>
-                      ) : (
-                        <button onClick={() => setDeleteConfirm(t.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-xl transition-colors"><Trash2 className="w-4 h-4" /></button>
-                      )
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {renderModal()}
-    </div>
-  );
-
-  function renderModal() {
-    return (
-      <>
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2.5rem] w-full max-w-lg p-8 shadow-2xl animate-in zoom-in-95 duration-200 relative">
-              <button onClick={() => setIsModalOpen(false)} className="absolute top-6 right-6 p-2 hover:bg-secondary/20 rounded-full transition-colors"><XCircle className="w-6 h-6 text-muted" /></button>
-              <h3 className="text-2xl font-black tracking-tighter mb-6 uppercase">Novo Lançamento</h3>
+      {/* MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] overflow-y-auto pt-4 pb-8 md:pt-12 md:pb-16 px-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
+          <div className="flex min-h-full items-start md:items-center justify-center">
+            <div className="bg-white rounded-[3rem] w-full max-w-lg p-8 md:p-12 shadow-2xl animate-fade-up border border-pink-50 relative flex flex-col z-10 transition-all sm:my-auto">
+              <div className="flex justify-between items-center mb-6 shrink-0 pr-8">
+                <div>
+                  <h3 className="text-xl md:text-2xl font-black text-slate-800 uppercase tracking-tight leading-none">{editingTransaction ? 'Editar' : 'Nova'} {modalType === 'income' ? 'Receita' : 'Despesa'}</h3>
+                  <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-2 px-1 opacity-70">Operação de fluxo de caixa studio.</p>
+                </div>
+                <button onClick={() => setIsModalOpen(false)} className="absolute top-0 right-0 p-8 text-slate-300 hover:text-slate-600 transition-all active:scale-90"><X className="w-8 h-8" /></button>
+              </div>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                   <div className="col-span-2 flex bg-secondary/10 p-1 rounded-2xl">
-                     <button type="button" onClick={() => setFormData({...formData, type: 'income'})} className={cn("flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all", formData.type === 'income' ? "bg-white text-green-600 shadow-sm" : "text-muted")}>Entrada</button>
-                     <button type="button" onClick={() => setFormData({...formData, type: 'expense'})} className={cn("flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all", formData.type === 'expense' ? "bg-white text-red-600 shadow-sm" : "text-muted")}>Saída</button>
-                   </div>
-                   <div className="col-span-2">
-                     <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Descrição</label>
-                     <input required className="input-field" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} placeholder="Ex: Pagamento Fornecedor" />
-                   </div>
-                   <div>
-                     <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Valor</label>
-                     <input required type="number" step="0.01" className="input-field" value={formData.amount} onChange={(e) => setFormData({...formData, amount: Number(e.target.value)})} />
-                   </div>
-                   <div>
-                     <label className="block text-[10px] font-black uppercase text-muted tracking-widest mb-1 ml-1">Data</label>
-                     <input required type="date" className="input-field" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} />
-                   </div>
+                <div className="relative pt-1.5 font-sans">
+                  <label className="floating-label">Categoria / Título</label>
+                  <input required className="input-premium !py-3 !px-5 shadow-sm" placeholder="Ex: Venda de Produtos, Aluguel..." value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} />
                 </div>
-                <div className="flex justify-end gap-3 mt-8">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary text-xs font-black uppercase">Sair</button>
-                  <button type="submit" className="btn-primary text-xs font-black uppercase">Salvar</button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="relative pt-1.5 font-sans">
+                    <label className="floating-label">Valor (R$)</label>
+                    <input required type="number" step="0.01" className="input-premium !py-3 !px-5 font-mono shadow-sm" placeholder="0,00" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} />
+                  </div>
+                  <div className="relative pt-1.5 font-sans">
+                    <label className="floating-label">Data da Operação</label>
+                    <input required type="date" className="input-premium !py-3 !px-5 shadow-sm font-black text-[10px] uppercase" value={formData.date} onChange={(e) => setFormData({...formData, date: e.target.value})} />
+                  </div>
                 </div>
+                <div className="relative pt-1.5 font-sans mb-4">
+                   <label className="label-premium !text-[9px] !mb-1.5">Descrição Detalhada</label>
+                   <textarea className="textarea-premium h-24 shadow-inner" placeholder="Pequena descrição para facilitar o controle futuro..." value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
+                </div>
+                <button type="submit" className={cn(
+                  "w-full h-14 rounded-2xl text-[11px] font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95 group",
+                  modalType === 'income' ? "bg-emerald-500 text-white shadow-emerald-100" : "bg-red-500 text-white shadow-red-100"
+                )}>
+                   Finalizar Lançamento <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </button>
               </form>
             </div>
           </div>
-        )}
-      </>
-    );
-  }
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BalanceCard({ title, value, icon: Icon, color, isMain }: any) {
+  return (
+    <div className={cn(
+      "p-8 rounded-[2.5rem] relative overflow-hidden transition-all group hover:scale-[1.02]",
+      isMain ? "bg-[#FFB6C1] text-white shadow-2xl shadow-pink-100" : "bg-white text-slate-800 shadow-sm border border-pink-50"
+    )}>
+       <div className={cn(
+         "w-12 h-12 rounded-2xl flex items-center justify-center mb-6",
+         isMain ? "bg-white/20 text-white" : "bg-pink-50 text-[#FFB6C1]"
+       )}>
+          <Icon className="w-6 h-6" />
+       </div>
+       <p className={cn("text-[10px] font-black uppercase tracking-[0.2em] mb-2", isMain ? "text-white/80" : "text-slate-400")}>{title}</p>
+       <p className="text-3xl font-black font-mono tracking-tighter leading-none">{formatCurrency(value)}</p>
+    </div>
+  );
 }

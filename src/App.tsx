@@ -12,6 +12,7 @@ import ServiceManagement from './components/ServiceManagement';
 import AppointmentCalendar from './components/AppointmentCalendar';
 import FinancialManagement from './components/FinancialManagement';
 import CashRegister from './components/CashRegister';
+import ProductPOS from './components/ProductPOS';
 import Auth from './components/Auth';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="agenda" element={<AppointmentCalendar />} />
             <Route path="clientes" element={<ClientManagement />} />
             <Route path="produtos" element={<ProductManagement />} />
+            <Route path="vendas" element={<ProductPOS />} />
             
             <Route 
               path="servicos" 
@@ -58,10 +60,7 @@ export default function App() {
               path="equipe" 
               element={isAdmin ? <StaffManagement /> : <Navigate to="/" replace />} 
             />
-            <Route 
-              path="caixa" 
-              element={isAdmin ? <CashRegister /> : <Navigate to="/" replace />} 
-            />
+            <Route path="caixa" element={<CashRegister />} />
             <Route 
               path="financeiro" 
               element={isAdmin ? <FinancialManagement /> : <Navigate to="/" replace />} 

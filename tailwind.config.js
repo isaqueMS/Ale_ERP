@@ -7,16 +7,25 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#0A0A0A', // Deep Velvet Black
-        secondary: '#262626', // Industrial Concrete/Grey
-        accent: '#D4AF37', // Metallic Gold/Brass
-        background: '#050505', // Total Noir
-        text: '#F5F5F5', // Off-White
-        muted: '#8A8A8A', // Ash Grey
+        primary: '#FF69B4', // Hot Pink
+        secondary: '#FFF0F5', // Lavender Blush (very light pink)
+        accent: '#FF1493', // Deep Pink
+        background: '#FFF5F8', // Shell Pink
+        text: '#4A2B33', // Dark Pink-Brown
+        muted: '#A08B90', // Soft Pink-Grey
+        sidebar: '#FFE4E1', // Misty Rose
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
       },
+      borderRadius: {
+        '3xl': '1.5rem',
+        '4xl': '2rem',
+        '5xl': '2.5rem',
+      },
+      boxShadow: {
+        'doll': '0 10px 25px -5px rgba(255, 105, 180, 0.2)',
+      }
     },
   },
   plugins: [],

@@ -32,6 +32,7 @@ export default function Layout() {
   ];
 
   if (isAdmin) {
+    navItems.push({ icon: ShoppingBag, label: 'Vendas', path: '/vendas' });
     navItems.push({ icon: Banknote, label: 'Caixa', path: '/caixa' });
     navItems.push({ icon: Users, label: 'Equipe', path: '/equipe' });
   }
