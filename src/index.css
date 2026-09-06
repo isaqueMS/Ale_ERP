@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Work+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -11,21 +11,32 @@
 }
 
 @layer components {
+  /* BOTÕES — semibold em vez de bold (mais SaaS, menos "app de consumo"),
+     raio e sombra mais discretos. */
   .btn-primary {
-    @apply bg-[#E38EA0] hover:bg-[#C15F76] text-white font-bold py-3 px-6 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-pink-100 text-sm sm:text-base;
-  }
-  
-  .card-premium {
-    @apply bg-white rounded-3xl sm:rounded-5xl shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] border border-slate-50 overflow-hidden transition-all hover:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)];
+    @apply bg-primary hover:bg-primary-dark text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 active:scale-[0.97] flex items-center justify-center gap-2 shadow-card text-sm sm:text-[15px];
   }
 
-  /* UI DESIGN SYSTEM - PREMIUM FORMS (Based on Ref Photo) */
+  .btn-secondary {
+    @apply bg-pink-50 hover:bg-pink-100 text-primary-dark font-semibold rounded-xl transition-all duration-200 active:scale-[0.97] inline-flex items-center justify-center gap-2;
+  }
+
+  .btn-ghost {
+    @apply bg-white border border-slate-200 hover:border-pink-200 hover:bg-pink-50/40 text-slate-600 font-semibold rounded-xl transition-all duration-200 active:scale-[0.97] inline-flex items-center justify-center gap-2;
+  }
+
+  .card-premium {
+    @apply bg-white rounded-2xl sm:rounded-3xl shadow-card border border-slate-100/80 overflow-hidden transition-shadow duration-200 hover:shadow-card-hover;
+  }
+
+  /* FORMULÁRIOS — raio mais compacto (rounded-xl -> rounded-lg), mesma
+     identidade de foco rosa. */
   .input-premium {
-    @apply w-full bg-white border border-slate-200 rounded-xl px-5 py-3.5 text-sm sm:text-base font-medium 
+    @apply w-full bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm font-medium
     text-slate-700 outline-none transition-all duration-200
     placeholder:text-slate-300 placeholder:font-normal
     hover:border-slate-300
-    focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30;
+    focus:border-pink-300 focus:ring-4 focus:ring-pink-100/40;
   }
 
   .input-premium-error {
@@ -37,18 +48,18 @@
   }
 
   .select-premium {
-    @apply appearance-none bg-white border border-slate-200 rounded-xl px-5 py-3.5 text-sm font-medium
+    @apply appearance-none bg-white border border-slate-200 rounded-lg px-4 py-3 text-sm font-medium
     text-slate-700 outline-none transition-all duration-200 cursor-pointer
     hover:border-slate-300
-    focus:border-pink-300 focus:ring-4 focus:ring-pink-100/30;
+    focus:border-pink-300 focus:ring-4 focus:ring-pink-100/40;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5' /%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 1.25rem center;
-    background-size: 1rem;
+    background-position: right 1rem center;
+    background-size: 0.875rem;
   }
 
   .textarea-premium {
-    @apply input-premium min-h-[100px] resize-none py-4;
+    @apply input-premium min-h-[100px] resize-none py-3.5;
   }
 
   .label-premium {
@@ -63,35 +74,75 @@
     @apply absolute -top-2 left-4 bg-white px-1.5 text-[9px] font-semibold uppercase text-pink-300 tracking-widest z-10 transition-all;
   }
 
-  /* CUSTOM CHECKBOX */
   .checkbox-premium {
     @apply w-5 h-5 rounded-md border-2 border-slate-200 bg-white checked:bg-pink-400 checked:border-pink-400 
     transition-all duration-200 cursor-pointer focus:ring-offset-2 focus:ring-2 focus:ring-pink-100;
   }
 
-  /* CUSTOM SWITCH (TOGGLE) */
   .switch-premium {
     @apply relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-pink-100 focus:ring-offset-2;
+  }
+
+  /* BADGES — chip de status consistente (substitui pills coloridas ad-hoc
+     espalhadas pelas telas). Semântica separada da cor de marca: rosa é só
+     "primary/em destaque", nunca "sucesso" ou "erro". */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide border;
+  }
+  .badge-primary {
+    @apply badge bg-pink-50 text-primary-dark border-pink-100;
+  }
+  .badge-success {
+    @apply badge bg-emerald-50 text-emerald-600 border-emerald-100;
+  }
+  .badge-warning {
+    @apply badge bg-amber-50 text-amber-600 border-amber-100;
+  }
+  .badge-error {
+    @apply badge bg-red-50 text-red-500 border-red-100;
+  }
+  .badge-neutral {
+    @apply badge bg-slate-50 text-slate-500 border-slate-100;
+  }
+
+  /* TABS — uso consistente para telas com sub-seções (Financeiro, Clientes...). */
+  .tab-item {
+    @apply px-4 py-2 rounded-lg text-xs font-semibold uppercase tracking-widest transition-all duration-200;
+  }
+  .tab-item-active {
+    @apply tab-item bg-primary text-white shadow-sm;
+  }
+  .tab-item-inactive {
+    @apply tab-item text-slate-400 hover:text-slate-600 hover:bg-slate-50;
   }
 }
 
 @layer utilities {
   .shadow-premium {
-    @apply shadow-[0_10px_25px_-5px_rgba(0,0,0,0.04),0_8px_10px_-6px_rgba(0,0,0,0.04)];
+    @apply shadow-[0_1px_2px_rgba(23,23,28,0.04),0_8px_20px_-8px_rgba(23,23,28,0.08)];
   }
   .animate-fade-up {
-    animation: fadeUp 0.5s ease-out forwards;
+    animation: fadeUp 0.4s ease-out forwards;
   }
 
-  /* Usadas em Dashboard.tsx mas nunca tinham sido definidas — ficavam sem
-     nenhum estilo próprio. Definidas agora dentro do novo sistema visual. */
   .glass-card {
-    @apply bg-white/90 backdrop-blur-xl border border-pink-50 rounded-3xl;
+    @apply bg-white/90 backdrop-blur-xl border border-pink-50 rounded-2xl;
   }
   .mobile-card {
-    @apply bg-white rounded-2xl border border-pink-50/70 shadow-premium;
+    @apply bg-white rounded-xl border border-pink-50/70 shadow-premium;
   }
-  .btn-secondary {
-    @apply bg-pink-50 hover:bg-pink-100 text-pink-600 font-semibold rounded-xl transition-all active:scale-95 inline-flex items-center justify-center gap-2;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

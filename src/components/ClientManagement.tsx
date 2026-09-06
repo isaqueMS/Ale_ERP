@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, Search, Edit3, Trash2, User,
   Phone, Mail, Calendar, X, MoreVertical,
@@ -130,35 +130,50 @@ export default function ClientManagement() {
     setSelectedIds(prev => prev.filter(x => x !== id));
   };
 
+  // Evita que o loop de envio continue depois que a pessoa clica em
+  // "Cancelar Envio" no meio do lote.
+  const cancelPromoRef = useRef(false);
+
+  // Dispara pra TODOS os clientes selecionados em sequência, um atrás do
+  // outro (com uma pequena pausa entre cada um pra não sobrecarregar a API
+  // da Meta) — sem precisar confirmar um por um.
+  const runBatchSend = async (list: Client[]) => {
+    setIsSending(true);
+    const results: SendResult[] = [];
+    for (let i = 0; i < list.length; i++) {
+      if (cancelPromoRef.current) {
+        for (let j = i; j < list.length; j++) {
+          results.push({ client: list[j], outcome: 'skipped' });
+        }
+        break;
+      }
+      setPromoIndex(i);
+      const result = await dispatchWhatsApp(list[i], buildMessageFor(list[i]));
+      results.push(result);
+      setSendResults([...results]);
+      if (i < list.length - 1 && !cancelPromoRef.current) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    }
+    setIsSending(false);
+    setPromoStep('done');
+  };
+
   const startPromoSending = () => {
     if (promoClients.length === 0 || !promoMessage.trim()) return;
     setPromoIndex(0);
     setSendResults([]);
     setPromoStep('sending');
+    cancelPromoRef.current = false;
+    runBatchSend(promoClients);
   };
 
-  const advancePromo = () => {
-    if (promoIndex + 1 >= promoClients.length) setPromoStep('done');
-    else setPromoIndex(i => i + 1);
-  };
-
-  const sendToCurrent = async () => {
-    const client = promoClients[promoIndex];
-    if (!client || isSending) return;
-    setIsSending(true);
-    const result = await dispatchWhatsApp(client, buildMessageFor(client));
-    setSendResults(prev => [...prev, result]);
-    setIsSending(false);
-    advancePromo();
-  };
-
-  const skipCurrent = () => {
-    const client = promoClients[promoIndex];
-    if (client) setSendResults(prev => [...prev, { client, outcome: 'skipped' }]);
-    advancePromo();
+  const cancelPromoSending = () => {
+    cancelPromoRef.current = true;
   };
 
   const finishPromo = () => {
+    cancelPromoRef.current = false;
     setIsPromoModalOpen(false);
     setSelectionMode(false);
     setSelectedIds([]);
@@ -274,7 +289,7 @@ export default function ClientManagement() {
              )}
              <div>
                 <div className="flex justify-between items-start mb-6">
-                   <div className="w-16 h-16 bg-[#FBF7F6] rounded-3xl flex items-center justify-center border border-slate-100 shadow-sm text-[#E38EA0] font-semibold text-2xl uppercase transition-transform group-hover:scale-105 group-hover:rotate-3">
+                   <div className="w-16 h-16 bg-[#FBF7F6] rounded-3xl flex items-center justify-center border border-slate-100 shadow-sm text-[#E38EA0] font-semibold text-2xl uppercase transition-transform group-hover:scale-105">
                       {client.name[0]}
                    </div>
                    <div className="flex gap-2">
@@ -440,14 +455,14 @@ export default function ClientManagement() {
                   <div className="mb-6 shrink-0 pr-8">
                     <h3 className="text-xl md:text-2xl font-semibold text-slate-800 uppercase tracking-tight leading-none">Enviando Promoção</h3>
                     <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-2 px-1 opacity-70">
-                      Cliente {promoIndex + 1} de {promoClients.length}
+                      Cliente {Math.min(sendResults.length + 1, promoClients.length)} de {promoClients.length}
                     </p>
                   </div>
 
                   <div className="w-full h-1.5 bg-pink-50 rounded-full overflow-hidden mb-6">
                     <div
                       className="h-full bg-[#E38EA0] transition-all"
-                      style={{ width: `${((promoIndex) / promoClients.length) * 100}%` }}
+                      style={{ width: `${(sendResults.length / promoClients.length) * 100}%` }}
                     />
                   </div>
 
@@ -457,12 +472,14 @@ export default function ClientManagement() {
                     <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{buildMessageFor(promoClients[promoIndex])}</p>
                   </div>
 
+                  <div className="flex items-center justify-center gap-3 text-slate-400 text-xs font-semibold uppercase tracking-widest mb-5">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#E38EA0]" />
+                    Enviando automaticamente...
+                  </div>
+
                   <div className="flex gap-3">
-                    <button onClick={skipCurrent} disabled={isSending} className="flex-1 text-[11px] font-semibold uppercase tracking-widest text-slate-500 hover:text-slate-700 px-4 py-3.5 rounded-2xl border border-slate-200 bg-white transition-all active:scale-95 disabled:opacity-40">
-                      Pular
-                    </button>
-                    <button onClick={sendToCurrent} disabled={isSending} className="flex-[2] btn-primary h-14 rounded-2xl text-[11px] uppercase tracking-widest font-semibold shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 disabled:opacity-70">
-                      {isSending ? (<><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>) : (<>Enviar Agora <ArrowRight className="w-4 h-4" /></>)}
+                    <button onClick={cancelPromoSending} disabled={!isSending} className="flex-1 text-[11px] font-semibold uppercase tracking-widest text-slate-500 hover:text-slate-700 px-4 py-3.5 rounded-2xl border border-slate-200 bg-white transition-all active:scale-95 disabled:opacity-40">
+                      Cancelar Envio
                     </button>
                   </div>
                 </>

@@ -7,6 +7,7 @@ import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import StaffManagement from './components/StaffManagement';
 import ClientManagement from './components/ClientManagement';
+import Inbox from './components/Inbox';
 import ProductManagement from './components/ProductManagement';
 import ServiceManagement from './components/ServiceManagement';
 import AppointmentCalendar from './components/AppointmentCalendar';
@@ -49,6 +50,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="agenda" element={<AppointmentCalendar />} />
             <Route path="clientes" element={<ClientManagement />} />
+            <Route path="conversas" element={<Inbox />} />
             <Route path="produtos" element={<ProductManagement />} />
             <Route 
               path="vendas" 

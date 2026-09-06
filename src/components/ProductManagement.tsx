@@ -85,7 +85,7 @@ export default function ProductManagement() {
           return (
             <div key={product.id} className="card-premium p-8 relative flex flex-col justify-between min-h-[300px] group transition-all">
                <div>
-                  <div className="w-14 h-14 bg-pink-50 rounded-2xl flex items-center justify-center mb-6 border border-pink-100 shadow-sm transition-transform group-hover:scale-105 group-hover:rotate-6">
+                  <div className="w-14 h-14 bg-pink-50 rounded-2xl flex items-center justify-center mb-6 border border-pink-100 shadow-sm transition-transform group-hover:scale-105">
                      <Package className="w-7 h-7 text-[#E38EA0]" />
                   </div>
                   <p className="text-[10px] font-semibold text-[#E38EA0] uppercase tracking-widest mb-1">{product.category || 'REVEND'}</p>

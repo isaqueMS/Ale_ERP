@@ -135,7 +135,7 @@ function CashRegisterAdmin() {
                 <div key={t.id} className="p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all hover:bg-[#FBF7F6] group relative">
                    <div className="flex items-center gap-6">
                       <div className={cn(
-                        "w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105 group-hover:rotate-3",
+                        "w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm transition-transform group-hover:scale-105",
                         t.type === 'income' ? "bg-emerald-50 text-emerald-500 border border-emerald-100" : "bg-red-50 text-red-500 border border-red-100"
                       )}>
                          {t.type === 'income' ? <ArrowUpRight className="w-6 h-6" /> : <ArrowDownRight className="w-6 h-6" />}
@@ -165,7 +165,7 @@ function CashRegisterAdmin() {
                          </div>
                       </div>
 
-                      <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                      <div className="flex gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-all sm:translate-x-2 sm:group-hover:translate-x-0">
                          <button onClick={() => { setEditingTransaction(t); setFormData({ category: t.category, amount: t.amount.toString(), description: t.description || '', date: t.date, paymentMethod: t.paymentMethod || '' }); setModalType(t.type); setIsModalOpen(true); }} className="p-3 bg-white border border-slate-100 text-slate-400 hover:text-[#E38EA0] rounded-xl shadow-sm transition-all active:scale-90"><Edit3 className="w-4 h-4" /></button>
                          <button onClick={() => deleteDoc(doc(db, 'transactions', t.id))} className="p-3 bg-white border border-slate-100 text-slate-300 hover:text-red-400 rounded-xl shadow-sm transition-all active:scale-90"><Trash2 className="w-4 h-4" /></button>
                       </div>

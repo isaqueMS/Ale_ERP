@@ -211,7 +211,7 @@ export default function StaffManagement() {
              <div>
                 <div className="flex justify-between items-start mb-6">
                    <div className="relative cursor-pointer" onClick={() => setViewingStaffDetails(member)}>
-                      <div className="w-20 h-20 bg-pink-50 rounded-4xl flex items-center justify-center border-2 border-white shadow-lg overflow-hidden transition-transform duration-500 group-hover:scale-105 group-hover:skew-x-1">
+                      <div className="w-20 h-20 bg-pink-50 rounded-4xl flex items-center justify-center border-2 border-white shadow-lg overflow-hidden transition-transform duration-500 group-hover:scale-105">
                          {member.photoUrl ? (
                            <img src={member.photoUrl} alt={member.name} className="w-full h-full object-cover" />
                          ) : (

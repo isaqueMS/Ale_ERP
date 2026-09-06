@@ -14,7 +14,8 @@ import {
   ArrowRight,
   UserPlus,
   ShoppingBag,
-  Bell
+  Bell,
+  CreditCard
 } from 'lucide-react';
 import { 
   AreaChart,
@@ -28,6 +29,7 @@ import {
 import { collection, query, where, getDocs, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { formatCurrency, cn } from '../lib/utils';
+import { PAYMENT_METHODS } from '../constants';
 import { format, startOfMonth, endOfMonth, subMonths, isAfter, parseISO, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '../lib/auth';
@@ -37,6 +39,7 @@ export default function Dashboard() {
   const { profile, isAdmin, user } = useAuth();
   const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = React.useState(format(new Date(), 'yyyy-MM-dd'));
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = React.useState<string>('all');
   const [stats, setStats] = React.useState({
     clients: 0,
     appointments: 0,
@@ -154,19 +157,24 @@ export default function Dashboard() {
     const dayTransactions = filteredTransactions.filter(t => getStandardDate(t) === selectedDate);
     const dayAppointments = filteredAppointments.filter(app => getStandardDate(app) === selectedDate);
 
-    // Próximos atendimentos do dia (apenas os pertinentes ao usuário)
+    // Próximos atendimentos do dia (apenas os pertinentes ao usuário) — essa
+    // lista não é filtrada por forma de pagamento, é só quem vem hoje.
     setUpcomingAppointments(dayAppointments.sort((a, b) => a.date.localeCompare(b.date)));
 
-    // Faturamento e Comissões do dia
+    // Faturamento e Comissões do dia — aqui sim respeitam o filtro de forma
+    // de pagamento selecionado no topo da tela (selectedPaymentMethod).
+    const matchesPayment = (paymentMethod?: string) =>
+      selectedPaymentMethod === 'all' || paymentMethod === selectedPaymentMethod;
+
     let dayRevenue = 0;
     let dayCommissions = 0;
     
     dayTransactions.forEach(t => {
-      if (t.type === 'income') dayRevenue += Number(t.amount) || 0;
+      if (t.type === 'income' && matchesPayment(t.paymentMethod)) dayRevenue += Number(t.amount) || 0;
     });
 
     dayAppointments.forEach(app => {
-      if (app.status === 'completed') dayCommissions += app.commissionAmount || 0;
+      if (app.status === 'completed' && matchesPayment(app.paymentMethod)) dayCommissions += app.commissionAmount || 0;
     });
 
     // Desempenho Semanal (Filtrado por exclusividade)
@@ -195,7 +203,7 @@ export default function Dashboard() {
           }
         }
 
-        if (finalTDate === dStr && t.type === 'income') {
+        if (finalTDate === dStr && t.type === 'income' && matchesPayment(t.paymentMethod)) {
           income += Number(t.amount) || 0;
         }
       });
@@ -215,7 +223,7 @@ export default function Dashboard() {
     }));
     setWeeklyData(weekly);
 
-  }, [selectedDate, allAppointments, allTransactions, allStaff, isAdmin]);
+  }, [selectedDate, allAppointments, allTransactions, allStaff, isAdmin, selectedPaymentMethod]);
 
   // Buscar profissional logado (por UID ou E-mail para garantir)
   const staffMember = allStaff.find(s => s.uid === user?.uid) || allStaff.find(s => s.email === user?.email);
@@ -266,6 +274,19 @@ export default function Dashboard() {
           </div>
           <button className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-muted"><Bell className="w-5 h-5" /></button>
         </header>
+
+        {/* Filtro por Forma de Pagamento (afeta Faturamento/Comissão e o gráfico semanal) */}
+        <div className="flex items-center gap-2 bg-white px-4 py-3 rounded-3xl shadow-premium border border-secondary/20">
+          <CreditCard className="w-4 h-4 text-primary shrink-0" />
+          <select
+            value={selectedPaymentMethod}
+            onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+            className="flex-1 min-w-0 bg-transparent text-[10px] font-semibold uppercase tracking-widest text-muted outline-none"
+          >
+            <option value="all">Todas as Formas de Pagamento</option>
+            {PAYMENT_METHODS.map(pm => <option key={pm.value} value={pm.value}>{pm.label}</option>)}
+          </select>
+        </div>
 
         {/* Portfolio Mobile (Only for Staff) - NOW AT THE TOP */}
         {!isAdmin && staffMember && (
@@ -404,14 +425,27 @@ export default function Dashboard() {
             Seja bem-vind{profile?.name?.toLowerCase().includes('ale') ? 'a' : 'o'}! O estúdio está pronto para hoje.
           </p>
         </div>
-        <div className="bg-white/70 backdrop-blur-md px-6 py-3 rounded-full border border-secondary shadow-premium flex items-center gap-3">
-          <Calendar className="w-5 h-5 text-primary" />
-          <input 
-            type="date" 
-            value={selectedDate} 
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="text-xs font-semibold uppercase tracking-widest bg-transparent border-none focus:ring-0 cursor-pointer"
-          />
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          <div className="bg-white/70 backdrop-blur-md px-6 py-3 rounded-full border border-secondary shadow-premium flex items-center gap-3">
+            <Calendar className="w-5 h-5 text-primary" />
+            <input 
+              type="date" 
+              value={selectedDate} 
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="text-xs font-semibold uppercase tracking-widest bg-transparent border-none focus:ring-0 cursor-pointer"
+            />
+          </div>
+          <div className="bg-white/70 backdrop-blur-md px-6 py-3 rounded-full border border-secondary shadow-premium flex items-center gap-3">
+            <CreditCard className="w-5 h-5 text-primary" />
+            <select
+              value={selectedPaymentMethod}
+              onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+              className="text-xs font-semibold uppercase tracking-widest bg-transparent border-none focus:ring-0 cursor-pointer outline-none"
+            >
+              <option value="all">Todas as Formas</option>
+              {PAYMENT_METHODS.map(pm => <option key={pm.value} value={pm.value}>{pm.label}</option>)}
+            </select>
+          </div>
         </div>
       </header>
 
@@ -580,26 +614,23 @@ export default function Dashboard() {
 
 function StatCard({ title, value, icon: Icon, trend, trendUp, color }: any) {
   return (
-    <div className="glass-card p-6 bg-white shadow-premium transition-all hover:shadow-xl hover:-translate-y-1 border border-secondary/20 flex flex-col justify-between h-52 relative overflow-hidden group">
+    <div className="bg-white rounded-2xl p-6 shadow-card hover:shadow-card-hover transition-shadow duration-200 border border-slate-100/80 flex flex-col justify-between h-36 group">
       <header className="flex justify-between items-start">
-         <div className={cn("w-14 h-14 rounded-3xl flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-500", color || "bg-primary/10 text-primary")}>
-            <Icon className="w-7 h-7" />
+         <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center transition-transform duration-200 group-hover:scale-105", color || "bg-primary/10 text-primary")}>
+            <Icon className="w-5 h-5" />
          </div>
          <div className={cn(
-            "px-3 py-1.5 rounded-xl text-[9px] font-semibold uppercase tracking-tighter flex items-center gap-1 shadow-sm",
-            trendUp ? "bg-green-50 text-green-600 border border-green-100" : "bg-red-50 text-red-600 border border-red-100"
+            "px-2.5 py-1 rounded-lg text-[9px] font-semibold uppercase tracking-wide flex items-center gap-1",
+            trendUp ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-red-50 text-red-500 border border-red-100"
          )}>
             {trend} <ArrowUpRight className={cn("w-3 h-3", !trendUp && "rotate-90")} />
          </div>
       </header>
-      
-      <div className="mt-8">
-         <span className="text-[10px] font-semibold text-muted uppercase tracking-widest mb-1 block opacity-50">{title}</span>
-         <h4 className="text-4xl font-semibold text-text tracking-tighter leading-none group-hover:text-primary transition-colors">{value}</h4>
+
+      <div>
+         <span className="text-[10px] font-semibold text-muted uppercase tracking-widest mb-1 block">{title}</span>
+         <h4 className="text-[28px] font-semibold text-text tracking-tight leading-none group-hover:text-primary-dark transition-colors">{value}</h4>
       </div>
-      
-      {/* Decorative background element */}
-      <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-secondary/5 rounded-full blur-2xl group-hover:bg-primary/5 transition-colors" />
     </div>
   );
 }

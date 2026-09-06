@@ -7,20 +7,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Rosa pastel modernizado — evolução do tema antigo (Hot Pink / Deep Pink),
-        // agora um rosa mais "desenhado"/dessaturado em vez do rosa-bebê cru.
+        // Rosa pastel — identidade da marca, usado como cor de destaque/ação,
+        // nunca como cor de fundo dominante (ver diretriz de design v2: "Luxury
+        // Beauty SaaS" — rosa como elemento de marca, não como tema geral).
         primary: '#E38EA0',
         'primary-dark': '#C15F76',
-        secondary: '#FCF2F1',   // era Lavender Blush — tom de superfície suave rosada
+        secondary: '#FCF2F1',   // superfície suave rosada, uso pontual
         accent: '#C15F76',      // rosa mais forte, para ênfase/hover
         background: '#FBF7F6',  // fundo geral, neutro com leve viés rosado
-        text: '#362A2B',        // texto principal (era um marrom-rosa mais escuro)
-        muted: '#8C7876',       // texto secundário
-        sidebar: '#FFFFFF',     // sidebar clara (era Misty Rose) — o rosa agora é só destaque
+        // Texto: grafite neutro (era um marrom-rosa mais quente) — lê como
+        // software premium/empresarial em vez de "feito à mão".
+        text: '#27262B',
+        muted: '#75727A',
+        sidebar: '#FFFFFF',
 
-        // Sobrescreve a escala "pink" padrão do Tailwind (usada em quase todos os
-        // componentes via bg-pink-50/text-pink-300/shadow-pink-100 etc.) para a
-        // mesma paleta rosa dessaturada, em vez do magenta vivo padrão do Tailwind.
+        // Escala "pink" usada em quase todo componente (bg-pink-50, text-pink-300,
+        // shadow-pink-100 etc.) — mesma paleta rosa dessaturada da marca.
         pink: {
           50: '#FCEEF1',
           100: '#FBE8EC',
@@ -35,17 +37,29 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['"Work Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Plus Jakarta Sans: geométrica, super legível, é a que mais aparece
+        // em produtos SaaS premium modernos hoje (Linear/Vercel-adjacent) —
+        // troca direta da Work Sans, sem mudar nenhuma lógica de layout.
+        sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Fraunces fica só para os poucos momentos de marca (login, título de
+        // boas-vindas) — mantém a feminilidade sofisticada sem virar o corpo
+        // de texto do produto inteiro.
         display: ['"Fraunces"', 'Georgia', 'serif'],
       },
       borderRadius: {
-        // Escala reduzida — "cantos mais sutis" em vez dos 2rem/2.5rem/3rem originais.
-        '3xl': '1.25rem',
-        '4xl': '1.5rem',
-        '5xl': '1.75rem',
+        // Escala mais slim — o antigo "bubble" (2rem–2.5rem) lia como app de
+        // consumo; isso aqui lê como produto empresarial sem virar quadrado.
+        '3xl': '1rem',
+        '4xl': '1.25rem',
+        '5xl': '1.5rem',
       },
       boxShadow: {
-        'doll': '0 14px 32px -18px rgba(227, 142, 160, 0.35)',
+        // Sombra de marca, agora bem mais discreta (era um "glow" rosa forte).
+        'doll': '0 10px 24px -16px rgba(227, 142, 160, 0.28)',
+        // Elevação neutra de card premium, para uso consistente no lugar de
+        // sombras ad-hoc (shadow-xl, shadow-2xl) espalhadas pelas telas.
+        'card': '0 1px 2px rgba(23, 23, 28, 0.04), 0 8px 24px -12px rgba(23, 23, 28, 0.08)',
+        'card-hover': '0 2px 4px rgba(23, 23, 28, 0.05), 0 16px 32px -12px rgba(23, 23, 28, 0.12)',
       }
     },
   },

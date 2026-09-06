@@ -27,6 +27,17 @@ export function getWhatsAppLink(phone: string, message: string = '') {
   return `https://wa.me/55${cleaned}?text=${encodeURIComponent(message)}`;
 }
 
+// Compara dois telefones ignorando formatação, DDI e o "9" extra que o
+// WhatsApp às vezes omite/inclui em números de celular brasileiros — usado
+// pela Caixa de Entrada (Inbox.tsx) para casar o telefone que chega do
+// WhatsApp com o telefone cadastrado do cliente.
+export function phonesMatch(a: string, b: string) {
+  const digitsA = ('' + a).replace(/\D/g, '');
+  const digitsB = ('' + b).replace(/\D/g, '');
+  if (digitsA.length < 8 || digitsB.length < 8) return false;
+  return digitsA.slice(-8) === digitsB.slice(-8);
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

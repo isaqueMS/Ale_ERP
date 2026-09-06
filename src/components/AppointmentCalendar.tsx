@@ -3,7 +3,7 @@ import {
   Calendar as CalendarIcon, Clock, User, Scissors,
   Plus, ChevronLeft, ChevronRight, Check, X,
   Search, Filter, MoreVertical, Edit2, Trash2,
-  ArrowRight as LucideArrowRight, Mail, Flag, Eye
+  ArrowRight as LucideArrowRight, Flag, Eye, FileText
 } from 'lucide-react';
 import {
   collection, query, onSnapshot, addDoc,
@@ -19,6 +19,10 @@ import { Appointment, Client, Staff, Service } from '../types';
 import { cn, formatCurrency } from '../lib/utils';
 import { useAuth } from '../lib/auth';
 import { PAYMENT_METHODS } from '../constants';
+import ServiceReceiptModal from './ServiceReceiptModal';
+import EmptyState from './EmptyState';
+import { Skeleton } from './Skeleton';
+import SearchableSelect from './SearchableSelect';
 
 export default function AppointmentCalendar() {
   const { user: currentUser, profile, isAdmin, isAgente } = useAuth();
@@ -33,6 +37,8 @@ export default function AppointmentCalendar() {
   const [searchTerm, setSearchTerm] = useState('');
   const [markerFilter, setMarkerFilter] = useState('all');
   const [payingAppointmentId, setPayingAppointmentId] = useState<string | null>(null);
+  const [receiptAppointmentId, setReceiptAppointmentId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [formData, setFormData] = useState({
     clientId: '',
@@ -49,6 +55,7 @@ export default function AppointmentCalendar() {
   useEffect(() => {
     const unsubA = onSnapshot(collection(db, 'appointments'), (snapshot) => {
       setAppointments(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Appointment)));
+      setIsLoading(false);
     });
     const unsubC = onSnapshot(collection(db, 'clients'), (snapshot) => {
       setClients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client)));
@@ -224,7 +231,7 @@ export default function AppointmentCalendar() {
       {/* Header Inbox-style */}
       <header className="bg-white border-b border-slate-100 p-6 flex flex-col md:flex-row justify-between items-center gap-6">
         <div className="flex items-center gap-4">
-           <Mail className="w-8 h-8 text-[#E38EA0]" />
+           <CalendarIcon className="w-8 h-8 text-[#E38EA0]" />
            <div>
               <h2 className="text-2xl font-display font-semibold text-slate-800 tracking-tight">Caixa de Agendamentos</h2>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">{filteredAppointments.length} atendimentos encontrados</p>
@@ -275,11 +282,29 @@ export default function AppointmentCalendar() {
 
         {/* Lista Estilo Inbox */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
-           {filteredAppointments.length === 0 ? (
-             <div className="flex flex-col items-center justify-center h-64 text-slate-300">
-                <Mail className="w-16 h-16 opacity-10 mb-4" />
-                <p className="font-semibold uppercase tracking-widest text-xs opacity-40">Nenhum agendamento nesta lista</p>
+           {isLoading ? (
+             <div className="space-y-2">
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-50">
+                     <Skeleton className="w-16 h-8 shrink-0" />
+                     <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
+                     <div className="flex-1 space-y-2">
+                        <Skeleton className="h-3 w-1/3" />
+                        <Skeleton className="h-2.5 w-1/4" />
+                     </div>
+                     <Skeleton className="w-20 h-8 shrink-0" />
+                  </div>
+                ))}
              </div>
+           ) : filteredAppointments.length === 0 ? (
+             <EmptyState
+               icon={CalendarIcon}
+               title="Nenhum agendamento nesta lista"
+               description="Ajuste os filtros acima ou crie um novo agendamento para começar."
+               actionLabel="Novo Agendamento"
+               onAction={openNewModal}
+               className="h-64"
+             />
            ) : (
              filteredAppointments.map(appt => {
                const client = clients.find(c => c.id === appt.clientId);
@@ -295,7 +320,7 @@ export default function AppointmentCalendar() {
                      setIsModalOpen(true);
                    }}
                    className={cn(
-                     "flex items-center gap-4 bg-white p-4 rounded-2xl border border-transparent shadow-sm hover:shadow-md transition-all cursor-pointer group relative overflow-hidden",
+                     "flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 bg-white p-4 rounded-2xl border border-transparent shadow-sm hover:shadow-md transition-all cursor-pointer group relative overflow-hidden",
                      appt.status === 'completed' ? "opacity-70 grayscale-[0.3]" : appt.status === 'cancelled' ? "opacity-50" : "hover:border-pink-100"
                    )}
                  >
@@ -305,22 +330,40 @@ export default function AppointmentCalendar() {
                      appt.status === 'completed' ? "bg-emerald-500" : appt.status === 'cancelled' ? "bg-red-300" : "bg-[#E38EA0]"
                    )} />
 
-                   {/* Horário */}
-                   <div className="w-20 text-center flex flex-col items-center">
-                     <span className="text-sm font-semibold text-slate-800 leading-none">{format(dateObj, 'HH:mm')}</span>
-                     <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">{format(dateObj, 'dd/MM')}</span>
+                   <div className="flex items-center gap-4">
+                      {/* Horário */}
+                      <div className="w-16 sm:w-20 shrink-0 text-center flex flex-col items-center">
+                        <span className="text-sm font-semibold text-slate-800 leading-none">{format(dateObj, 'HH:mm')}</span>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">{format(dateObj, 'dd/MM')}</span>
+                      </div>
+
+                      {/* Avatar/Ícone */}
+                      <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-[#E38EA0] border border-slate-50 font-semibold shrink-0">
+                        {client?.name?.[0] || 'C'}
+                      </div>
+
+                      {/* Informações Principais — versão compacta, só em telas pequenas */}
+                      <div className="flex-1 min-w-0 sm:hidden">
+                         <h4 className="text-xs font-semibold text-slate-800 uppercase leading-none truncate">{client?.name || 'Cliente s/ nome'}</h4>
+                         <p className="text-[10px] font-semibold text-[#E38EA0] truncate mt-1">{appt.service}</p>
+                         {appt.notes && (
+                           <p className="text-[10px] text-slate-400 truncate mt-0.5 flex items-center gap-1" title={appt.notes}>
+                             <FileText className="w-2.5 h-2.5 shrink-0" /> <span className="truncate">{appt.notes}</span>
+                           </p>
+                         )}
+                      </div>
                    </div>
 
-                   {/* Avatar/Ícone */}
-                   <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-[#E38EA0] border border-slate-50 font-semibold">
-                     {client?.name?.[0] || 'C'}
-                   </div>
-
-                   {/* Informações Principais */}
-                   <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
-                      <div>
+                   {/* Informações Principais — versão completa, a partir de sm */}
+                   <div className="hidden sm:grid flex-1 grid-cols-1 md:grid-cols-3 gap-2">
+                      <div className="min-w-0">
                          <h4 className="text-xs font-semibold text-slate-800 uppercase leading-none truncate">{client?.name || 'Cliente s/ nome'}</h4>
                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Cliente</p>
+                         {appt.notes && (
+                           <p className="text-[10px] text-slate-400 truncate mt-1 flex items-center gap-1" title={appt.notes}>
+                             <FileText className="w-2.5 h-2.5 shrink-0" /> <span className="truncate">{appt.notes}</span>
+                           </p>
+                         )}
                       </div>
                       <div>
                          <h4 className="text-xs font-semibold text-[#F5D3DA] border-b-2 border-pink-50 inline-block uppercase leading-none">{appt.service}</h4>
@@ -334,37 +377,43 @@ export default function AppointmentCalendar() {
 
                    {/* Marcador */}
                    {appt.marker && (
-                     <div className="hidden lg:flex px-3 py-1 bg-slate-50 rounded-full border border-slate-100 items-center justify-center">
-                        <span className="text-[9px] font-semibold uppercase text-slate-600">
-                          {appt.marker === 'importante' ? '⚠️ Importante' : appt.marker === 'pendente' ? '⏳ Pendente' : appt.marker === 'sucesso' ? '✅ Sucesso' : appt.marker}
+                     <div className="hidden lg:flex items-center justify-center">
+                        <span className={cn(
+                          appt.marker === 'importante' ? 'badge-warning' : appt.marker === 'pendente' ? 'badge-neutral' : appt.marker === 'sucesso' ? 'badge-success' : 'badge-neutral'
+                        )}>
+                          {appt.marker === 'importante' ? 'Importante' : appt.marker === 'pendente' ? 'Pendente' : appt.marker === 'sucesso' ? 'Sucesso' : appt.marker}
                         </span>
                      </div>
                    )}
 
-                   {/* Status/Valor */}
-                   <div className="w-32 text-right">
-                      <p className="text-sm font-semibold text-slate-800 font-mono italic leading-none">{formatCurrency(appt.price)}</p>
-                      <span className={cn(
-                        "text-[9px] font-semibold uppercase tracking-widest mt-1 inline-block",
-                        appt.status === 'completed' ? "text-emerald-500" : appt.status === 'cancelled' ? "text-red-400" : "text-[#E38EA0]"
-                      )}>{appt.status === 'scheduled' ? 'Agendado' : appt.status === 'completed' ? 'Finalizado' : 'Cancelado'}</span>
-                      {appt.status === 'completed' && appt.paymentMethod && (
-                        <span className="block text-[8px] font-semibold text-slate-300 uppercase tracking-widest mt-0.5">
-                          {PAYMENT_METHODS.find(pm => pm.value === appt.paymentMethod)?.label || appt.paymentMethod}
-                        </span>
-                      )}
-                   </div>
+                   <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-3">
+                      {/* Status/Valor */}
+                      <div className="text-left sm:text-right sm:w-32 shrink-0">
+                         <p className="text-sm font-semibold text-slate-800 font-mono italic leading-none mb-1.5">{formatCurrency(appt.price)}</p>
+                         <span className={cn(
+                           appt.status === 'completed' ? 'badge-success' : appt.status === 'cancelled' ? 'badge-error' : 'badge-primary'
+                         )}>{appt.status === 'scheduled' ? 'Agendado' : appt.status === 'completed' ? 'Finalizado' : 'Cancelado'}</span>
+                         {appt.status === 'completed' && appt.paymentMethod && (
+                           <span className="block text-[8px] font-semibold text-slate-300 uppercase tracking-widest mt-1">
+                             {PAYMENT_METHODS.find(pm => pm.value === appt.paymentMethod)?.label || appt.paymentMethod}
+                           </span>
+                         )}
+                      </div>
 
-                   {/* Hover Actions */}
-                   <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all scale-95 origin-right">
-                      {isAdmin && appt.status === 'scheduled' && (
-                        <>
-                           <button onClick={(e) => { e.stopPropagation(); setPayingAppointmentId(appt.id); }} title="Concluir" className="p-2 bg-emerald-500 text-white rounded-lg shadow-lg hover:bg-emerald-600 transition-all"><Check className="w-3 h-3" /></button>
-                           <button onClick={(e) => { e.stopPropagation(); updateStatus(appt.id, 'cancelled'); }} title="Cancelar" className="p-2 bg-white text-slate-300 border border-slate-100 rounded-lg hover:text-red-400 transition-all"><X className="w-3 h-3" /></button>
-                        </>
-                      )}
-                      {!isAdmin && <button className="p-2 bg-white text-slate-300 border border-slate-100 rounded-lg hover:text-blue-400 transition-all" title="Ver Detalhes"><Eye className="w-3 h-3" /></button>}
-                      {isAdmin && <button onClick={(e) => { e.stopPropagation(); deleteAppointment(appt.id); }} title="Excluir" className="p-2 bg-white text-slate-300 border border-slate-100 rounded-lg hover:text-red-500 transition-all"><Trash2 className="w-3 h-3" /></button>}
+                      {/* Ações — sempre visíveis no celular (sem hover), reveladas no hover a partir de sm */}
+                      <div className="flex items-center gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition-all sm:scale-95 sm:origin-right shrink-0">
+                         {isAdmin && appt.status === 'scheduled' && (
+                           <>
+                              <button onClick={(e) => { e.stopPropagation(); setPayingAppointmentId(appt.id); }} title="Concluir" className="p-2 bg-emerald-500 text-white rounded-lg shadow-lg hover:bg-emerald-600 transition-all"><Check className="w-3 h-3" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); updateStatus(appt.id, 'cancelled'); }} title="Cancelar" className="p-2 bg-white text-slate-300 border border-slate-100 rounded-lg hover:text-red-400 transition-all"><X className="w-3 h-3" /></button>
+                           </>
+                         )}
+                         {appt.status === 'completed' && (
+                           <button onClick={(e) => { e.stopPropagation(); setReceiptAppointmentId(appt.id); }} title="Nota de Serviço" className="p-2 bg-white text-slate-300 border border-slate-100 rounded-lg hover:text-[#E38EA0] transition-all"><FileText className="w-3 h-3" /></button>
+                         )}
+                         {!isAdmin && <button className="p-2 bg-white text-slate-300 border border-slate-100 rounded-lg hover:text-blue-400 transition-all" title="Ver Detalhes"><Eye className="w-3 h-3" /></button>}
+                         {isAdmin && <button onClick={(e) => { e.stopPropagation(); deleteAppointment(appt.id); }} title="Excluir" className="p-2 bg-white text-slate-300 border border-slate-100 rounded-lg hover:text-red-500 transition-all"><Trash2 className="w-3 h-3" /></button>}
+                      </div>
                    </div>
                  </div>
                );
@@ -377,66 +426,65 @@ export default function AppointmentCalendar() {
         <div className="fixed inset-0 z-[100] overflow-y-auto pt-4 pb-8 md:pt-12 md:pb-16 px-4">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setIsModalOpen(false)} />
           <div className="flex min-h-full items-start md:items-center justify-center">
-            <div className="bg-white rounded-5xl w-full max-w-lg p-8 md:p-12 shadow-2xl animate-fade-up border border-pink-50 relative flex flex-col z-10 transition-all sm:my-auto">
-              <div className="flex justify-between items-center mb-6 shrink-0 pr-8">
+            <div className="bg-white rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl animate-fade-up border border-slate-100 relative flex flex-col z-10 transition-all sm:my-auto">
+              <div className="flex justify-between items-start mb-7 shrink-0 pr-8">
                 <div>
-                  <h3 className="text-xl md:text-2xl font-semibold text-slate-800 uppercase tracking-tight leading-none">{editingAppointment ? 'Editar' : 'Nova'} Reserva</h3>
-                  <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-2 px-1 opacity-70">Detalhes do atendimento studio.</p>
+                  <h3 className="text-xl font-semibold text-slate-800 tracking-tight leading-none">{editingAppointment ? 'Editar Agendamento' : 'Novo Agendamento'}</h3>
+                  <p className="text-slate-400 text-xs font-medium mt-2">Preencha os dados do atendimento.</p>
                 </div>
-                <button onClick={() => setIsModalOpen(false)} className="absolute top-0 right-0 p-8 text-slate-300 hover:text-slate-600 transition-all active:scale-90"><X className="w-8 h-8" /></button>
+                <button onClick={() => setIsModalOpen(false)} className="absolute top-0 right-0 p-6 text-slate-300 hover:text-slate-600 transition-all active:scale-90"><X className="w-6 h-6" /></button>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                   <div className="relative pt-1.5 font-sans">
-                      <label className="floating-label">Cliente</label>
-                      <select
-                        required
-                        disabled={!isAdmin && !!editingAppointment}
-                        className="select-premium !py-2.5 !px-5 disabled:opacity-70"
+                   <div>
+                      <label className="label-premium">Cliente</label>
+                      <SearchableSelect
+                        options={sortedClients.map(c => ({ value: c.id, label: c.name }))}
                         value={formData.clientId}
-                        onChange={e => setFormData({...formData, clientId: e.target.value})}
-                      >
-                         <option value="">Selecionar Cliente</option>
-                         {sortedClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                        onChange={(clientId) => setFormData({ ...formData, clientId })}
+                        placeholder="Selecionar cliente"
+                        searchPlaceholder="Buscar por nome..."
+                        emptyMessage="Nenhum cliente encontrado."
+                        disabled={!isAdmin && !!editingAppointment}
+                      />
                    </div>
-                   <div className="relative pt-1.5 font-sans">
-                      <label className="floating-label">Profissional</label>
+                   <div>
+                      <label className="label-premium">Profissional</label>
                       <select
                          required
                          disabled={!isAdmin}
-                         className="select-premium !py-2.5 !px-5 disabled:opacity-50"
+                         className="select-premium disabled:opacity-50"
                          value={formData.staffId}
                          onChange={e => setFormData({...formData, staffId: e.target.value})}
                       >
-                         <option value="">Selecionar Profissional</option>
+                         <option value="">Selecionar profissional</option>
                          {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                       </select>
                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                   <div className="relative pt-1.5 font-sans">
-                      <label className="floating-label">Serviço</label>
+                   <div>
+                      <label className="label-premium">Serviço</label>
                       <select
                         required
                         disabled={!isAdmin && !!editingAppointment}
-                        className="select-premium !py-2.5 !px-5 disabled:opacity-70"
+                        className="select-premium disabled:opacity-70"
                         value={formData.service}
                         onChange={e => handleServiceChange(e.target.value)}
                       >
-                         <option value="">Selecionar Serviço</option>
+                         <option value="">Selecionar serviço</option>
                          {availableServices.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                       </select>
                    </div>
-                   <div className="relative pt-1.5 font-sans">
-                      <label className="floating-label">Data e Hora</label>
+                   <div>
+                      <label className="label-premium">Data e hora</label>
                       <input
                         required
                         type="datetime-local"
                         disabled={!isAdmin && !!editingAppointment}
-                        className="input-premium !py-2.5 !px-5 font-semibold uppercase text-[10px] disabled:opacity-70"
+                        className="input-premium disabled:opacity-70"
                         value={formData.date}
                         onChange={e => setFormData({...formData, date: e.target.value})}
                       />
@@ -444,12 +492,12 @@ export default function AppointmentCalendar() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="relative pt-1.5 font-sans">
-                     <label className="floating-label">Status</label>
+                  <div>
+                     <label className="label-premium">Status</label>
                      <select
                        required
                        disabled={!isAdmin}
-                       className="select-premium !py-2.5 !px-5 disabled:opacity-50"
+                       className="select-premium disabled:opacity-50"
                        value={(formData as any).status || 'scheduled'}
                        onChange={e => setFormData({...formData, status: e.target.value} as any)}
                      >
@@ -458,12 +506,12 @@ export default function AppointmentCalendar() {
                         <option value="cancelled">Cancelado</option>
                      </select>
                   </div>
-                  <div className="relative pt-1.5 font-sans">
-                     <label className="floating-label">Valor (R$)</label>
+                  <div>
+                     <label className="label-premium">Valor (R$)</label>
                      <input
                         required
                         type="number"
-                        className="input-premium font-mono !py-2.5 !px-5 shadow-sm disabled:opacity-50"
+                        className="input-premium font-mono disabled:opacity-50"
                         value={formData.price}
                         onChange={e => setFormData({...formData, price: Number(e.target.value)})}
                         disabled={!isAdmin}
@@ -471,11 +519,11 @@ export default function AppointmentCalendar() {
                   </div>
                 </div>
 
-                <div className="relative pt-1.5 font-sans">
-                  <label className="floating-label">Forma de Pagamento</label>
+                <div>
+                  <label className="label-premium">Forma de pagamento</label>
                   <select
                     disabled={!isAdmin}
-                    className="select-premium !py-2.5 !px-5 disabled:opacity-50"
+                    className="select-premium disabled:opacity-50"
                     value={formData.paymentMethod || ''}
                     onChange={e => setFormData({...formData, paymentMethod: e.target.value})}
                   >
@@ -484,37 +532,39 @@ export default function AppointmentCalendar() {
                   </select>
                 </div>
 
-                <div className="relative pt-1.5 font-sans">
-                  <label className="label-premium !text-[9px] !mb-1.5 uppercase font-semibold tracking-widest opacity-60">Marcador (Comunicação)</label>
+                <div>
+                  <label className="label-premium">Marcador (comunicação)</label>
                   <select
-                    className="select-premium !py-2.5 !px-5"
+                    className="select-premium"
                     value={formData.marker || ''}
                     onChange={e => setFormData({...formData, marker: e.target.value})}
                   >
-                    <option value="">Nenhum Marcador</option>
-                    <option value="importante">⚠️ Importante</option>
-                    <option value="pendente">⏳ Pendente</option>
-                    <option value="sucesso">✅ Sucesso</option>
+                    <option value="">Nenhum marcador</option>
+                    <option value="importante">Importante</option>
+                    <option value="pendente">Pendente</option>
+                    <option value="sucesso">Sucesso</option>
                   </select>
                 </div>
 
-                <div className="relative pt-1.5 font-sans mb-4">
-                   <label className="label-premium !text-[9px] !mb-1.5 uppercase font-semibold tracking-widest opacity-60">Observações Internas / Comentários</label>
-                   <textarea className="textarea-premium h-24 shadow-inner" placeholder="Adicione comentários ou notas sobre o atendimento..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
+                <div>
+                   <label className="label-premium">Observações internas</label>
+                   <textarea className="textarea-premium" placeholder="Adicione comentários ou notas sobre o atendimento..." value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} />
                 </div>
 
-                <div className="flex gap-4">
+                <div className="flex gap-3 pt-1">
                   {isAdmin && editingAppointment && (
                     <button
                       type="button"
                       onClick={() => deleteAppointment(editingAppointment.id)}
-                      className="px-6 rounded-2xl border-2 border-red-50 text-red-300 hover:border-red-100 hover:text-red-500 transition-all"
+                      title="Excluir agendamento"
+                      aria-label="Excluir agendamento"
+                      className="px-5 rounded-xl border border-red-100 text-red-300 hover:border-red-200 hover:text-red-500 hover:bg-red-50 transition-all"
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
                   )}
-                  <button type="submit" className="flex-1 btn-primary h-14 rounded-2xl text-[11px] uppercase tracking-widest font-semibold group shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
-                    {editingAppointment ? 'Aplicar Alterações' : 'Confirmar Agenda'} <LucideArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  <button type="submit" className="flex-1 btn-primary h-12 rounded-xl text-sm font-semibold group flex items-center justify-center gap-2">
+                    {editingAppointment ? 'Salvar alterações' : 'Confirmar agendamento'} <LucideArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
               </form>
@@ -536,7 +586,12 @@ export default function AppointmentCalendar() {
               {PAYMENT_METHODS.map(pm => (
                 <button
                   key={pm.value}
-                  onClick={async () => { await updateStatus(payingAppointment.id, 'completed', pm.value); setPayingAppointmentId(null); }}
+                  onClick={async () => {
+                    const finishedId = payingAppointment.id;
+                    await updateStatus(finishedId, 'completed', pm.value);
+                    setPayingAppointmentId(null);
+                    setReceiptAppointmentId(finishedId);
+                  }}
                   className="w-full py-4 rounded-2xl border border-pink-100 bg-[#FBF7F6] hover:bg-[#E38EA0] hover:text-white text-slate-700 font-semibold text-sm uppercase tracking-wide transition-all active:scale-95"
                 >
                   {pm.label}
@@ -547,6 +602,19 @@ export default function AppointmentCalendar() {
           </div>
         </div>
       )}
+
+      {receiptAppointmentId && (() => {
+        const receiptAppointment = appointments.find(a => a.id === receiptAppointmentId);
+        if (!receiptAppointment) return null;
+        return (
+          <ServiceReceiptModal
+            appointment={receiptAppointment}
+            client={clients.find(c => c.id === receiptAppointment.clientId)}
+            staffMember={staff.find(s => s.id === receiptAppointment.staffId)}
+            onClose={() => setReceiptAppointmentId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -40,3 +40,11 @@ export async function sendWhatsAppText(phone: string, message: string) {
 export async function sendWhatsAppTemplate(phone: string) {
   return callWorker('/send-template', { phone });
 }
+
+// Manda um PDF (a Nota de Serviço) direto para o WhatsApp do cliente.
+// base64Pdf vem sem o prefixo "data:application/pdf;base64,". Só funciona
+// se a janela de 24h estiver aberta — mesma regra do sendWhatsAppText, e
+// lança o mesmo err.code === 'window_closed' quando não estiver.
+export async function sendWhatsAppDocument(phone: string, filename: string, base64Pdf: string, caption?: string) {
+  return callWorker('/send-document', { phone, filename, base64Pdf, caption });
+}

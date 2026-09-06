@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus, TrendingUp, TrendingDown, DollarSign, Filter, Trash2,
   Edit3, Calendar, PieChart, Download, X, Search, User, FileText,
-  ChevronDown, ArrowUpRight, ArrowDownRight, Clock
+  ChevronDown, ArrowUpRight, ArrowDownRight, Clock, CreditCard
 } from 'lucide-react';
 import {
   collection, query, onSnapshot, addDoc,
@@ -30,6 +30,7 @@ export default function FinancialManagement() {
   const [startDate, setStartDate] = useState(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
   const [selectedStaff, setSelectedStaff] = useState<string>('all');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('all');
 
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
@@ -78,12 +79,13 @@ export default function FinancialManagement() {
 
         const profId = t.professionalId || t.creatorId;
         const matchesStaff = selectedStaff === 'all' || profId === selectedStaff;
-        return inRange && matchesType && matchesSearch && matchesStaff;
+        const matchesPayment = selectedPaymentMethod === 'all' || t.paymentMethod === selectedPaymentMethod;
+        return inRange && matchesType && matchesSearch && matchesStaff && matchesPayment;
       } catch (e) {
         return false;
       }
     });
-  }, [transactions, filterType, startDate, endDate, searchTerm, selectedStaff]);
+  }, [transactions, filterType, startDate, endDate, searchTerm, selectedStaff, selectedPaymentMethod]);
 
   const totals = useMemo(() => {
     return filteredTransactions.reduce((acc, t) => {
@@ -100,6 +102,7 @@ export default function FinancialManagement() {
       const periodAppointments = appointments.filter(a =>
         a.staffId === s.id &&
         a.status === 'completed' &&
+        (selectedPaymentMethod === 'all' || a.paymentMethod === selectedPaymentMethod) &&
         isWithinInterval(parseISO(a.date), {
           start: new Date(startDate + 'T00:00:00'),
           end: new Date(endDate + 'T23:59:59')
@@ -120,7 +123,7 @@ export default function FinancialManagement() {
         netProfit
       };
     }).filter(s => selectedStaff === 'all' || s.id === selectedStaff);
-  }, [staff, appointments, startDate, endDate, selectedStaff]);
+  }, [staff, appointments, startDate, endDate, selectedStaff, selectedPaymentMethod]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,7 +181,7 @@ export default function FinancialManagement() {
                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                <div className="relative group">
                   <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-[#E38EA0] transition-colors" />
                   <input
@@ -198,6 +201,17 @@ export default function FinancialManagement() {
                   >
                     <option value="all">Filtro por Atendente (Todas)</option>
                     {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+               </div>
+               <div className="relative group">
+                  <CreditCard className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-[#E38EA0] transition-colors" />
+                  <select
+                    className="w-full bg-slate-50 border-2 border-transparent rounded-3xl py-4 pl-14 pr-4 text-xs font-bold outline-none focus:bg-white focus:border-pink-50 appearance-none cursor-pointer transition-all"
+                    value={selectedPaymentMethod}
+                    onChange={e => setSelectedPaymentMethod(e.target.value)}
+                  >
+                    <option value="all">Forma de Pagamento (Todas)</option>
+                    {PAYMENT_METHODS.map(pm => <option key={pm.value} value={pm.value}>{pm.label}</option>)}
                   </select>
                </div>
             </div>
@@ -281,7 +295,7 @@ export default function FinancialManagement() {
               </button>
            </div>
         </div>
-        <div className="responsive-table-container">
+        <div className="w-full overflow-x-auto">
            <table className="w-full min-w-[1000px]">
               <thead>
                  <tr className="text-[10px] font-semibold text-slate-300 uppercase tracking-widest bg-slate-50/30">
@@ -328,7 +342,7 @@ export default function FinancialManagement() {
                           </span>
                        </td>
                        <td className="px-10 py-6">
-                          <div className="flex items-center justify-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 group-hover:translate-x-0">
+                          <div className="flex items-center justify-center gap-3 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity sm:translate-x-4 sm:group-hover:translate-x-0">
                              <button onClick={() => { setEditingTransaction(t); setFormData({ ...t, paymentMethod: t.paymentMethod || '' } as any); setIsModalOpen(true); }} className="p-3 bg-white shadow-lg border border-pink-50 rounded-2xl text-slate-400 hover:text-[#E38EA0] transition-all scale-90 hover:scale-100"><Edit3 className="w-4 h-4" /></button>
                              <button onClick={() => setDeleteConfirm(t.id)} className="p-3 bg-white shadow-lg border border-pink-50 rounded-2xl text-slate-400 hover:text-red-400 transition-all scale-90 hover:scale-100"><Trash2 className="w-4 h-4" /></button>
                           </div>

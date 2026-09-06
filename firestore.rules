@@ -75,6 +75,22 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Caixa de Entrada do WhatsApp: gravada só pelo Cloudflare Worker, usando
+    // uma Service Account do Google Cloud (acesso via IAM, não passa pelas
+    // regras abaixo — por isso "allow create/delete: if false" aqui não
+    // impede o Worker de funcionar). Qualquer autenticado pode ler as
+    // conversas e marcar como lida (resetar unreadCount).
+    match /conversations/{phone} {
+      allow read: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow create, delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow write: if false;
+      }
+    }
+
     // Qualquer outra coleção não prevista acima: negado por padrão (sem catch-all liberado).
   }
 }

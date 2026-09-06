@@ -1,3 +1,9 @@
 node_modules/
 .wrangler/
 .dev.vars
+
+# Chave da Service Account do Google Cloud (baixada do console GCP) — NUNCA
+# deve ir pro GitHub. O conteúdo dela já foi carregado no Worker via
+# `wrangler secret put GCP_SERVICE_ACCOUNT_KEY`; este arquivo local é só
+# uma cópia de backup no seu computador.
+chess-d6bcf-*.json

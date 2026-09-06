@@ -11,7 +11,10 @@ import {
   Settings,
   X,
   Banknote,
-  ShoppingCart
+  ShoppingCart,
+  MessageCircle,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 import { auth } from '../lib/firebase';
 import { signOut } from 'firebase/auth';
@@ -21,11 +24,13 @@ import { useAuth } from '../lib/auth';
 interface SidebarProps {
   onClose?: () => void;
   className?: string;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export default function Sidebar({ onClose, className }: SidebarProps) {
+export default function Sidebar({ onClose, className, collapsed = false, onToggleCollapse }: SidebarProps) {
   const navigate = useNavigate();
-  const { isAdmin, isAgente, user } = useAuth();
+  const { isAdmin, isAgente, user, profile } = useAuth();
 
   // Menu organizado por grupo de função, pra facilitar achar as coisas
   // (pedido de acessibilidade/usabilidade da cliente).
@@ -41,6 +46,7 @@ export default function Sidebar({ onClose, className }: SidebarProps) {
       label: 'Clientes & Vendas',
       items: [
         { icon: UserCircle, label: 'Clientes', path: '/clientes' },
+        { icon: MessageCircle, label: 'Caixa de Entrada', path: '/conversas' },
         { icon: Package, label: 'Produtos', path: '/produtos' },
         ...(isAdmin ? [{ icon: ShoppingCart, label: 'Vender Produtos', path: '/vendas' }] : []),
       ]
@@ -61,8 +67,10 @@ export default function Sidebar({ onClose, className }: SidebarProps) {
     }] : []),
   ];
 
-  const roleLabel = isAdmin ? "ADMIN" : isAgente ? "AGENTE" : "COMUM";
-  const roleColor = isAdmin ? "text-green-600" : isAgente ? "text-blue-600" : "text-red-600";
+  const roleLabel = isAdmin ? 'Admin' : isAgente ? 'Agente' : 'Equipe';
+  const roleBadgeClass = isAdmin ? 'badge-primary' : 'badge-neutral';
+  const displayName = profile?.name || user?.displayName || user?.email || 'Studio Alê';
+  const initial = displayName?.[0]?.toUpperCase() || 'A';
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -71,46 +79,61 @@ export default function Sidebar({ onClose, className }: SidebarProps) {
   };
 
   return (
-    <aside className={cn("w-64 bg-white border-r border-secondary flex flex-col h-full shadow-sm z-50", className)}>
-      <div className="p-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-primary/20 p-2 rounded-xl">
-            <Scissors className="text-primary w-6 h-6" />
+    <aside
+      className={cn(
+        "w-64 bg-white border-r border-slate-100 flex flex-col h-full shadow-sm z-50 transition-[width] duration-300 ease-in-out",
+        collapsed ? "lg:w-[80px]" : "lg:w-64",
+        className
+      )}
+    >
+      <div className={cn("p-5 flex items-center gap-3", collapsed ? "lg:justify-center lg:px-0" : "justify-between")}>
+        <div className={cn("flex items-center gap-3 min-w-0", collapsed && "lg:justify-center")}>
+          <div className="bg-primary/10 p-2 rounded-lg shrink-0">
+            <Scissors className="text-primary w-5 h-5" />
           </div>
-          <h1 className="text-xl font-bold text-text tracking-tight">
+          <h1 className={cn(
+            "text-[15px] font-semibold text-text tracking-tight truncate transition-all duration-200",
+            collapsed && "lg:hidden"
+          )}>
             Estúdio da <span className="text-primary">Alê</span>
           </h1>
         </div>
         {onClose && (
-          <button onClick={onClose} className="lg:hidden p-2 hover:bg-secondary/20 rounded-lg transition-colors">
+          <button onClick={onClose} className="lg:hidden p-2 hover:bg-slate-50 rounded-lg transition-colors shrink-0">
             <X className="w-5 h-5 text-muted" />
           </button>
         )}
       </div>
 
-      <nav className="flex-1 px-4 py-4 space-y-6 overflow-y-auto">
+      <nav className="flex-1 px-3 py-3 space-y-5 overflow-y-auto overflow-x-hidden">
         {groups.map((group) => (
-          <div key={group.label} className="space-y-1.5">
-            <p className="px-4 text-[10px] font-bold uppercase tracking-widest text-muted/60">
+          <div key={group.label} className="space-y-1">
+            <p className={cn(
+              "px-3 text-[10px] font-semibold uppercase tracking-widest text-muted/60 truncate",
+              collapsed && "lg:hidden"
+            )}>
               {group.label}
             </p>
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {group.items.map((item) => (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   onClick={onClose}
+                  title={collapsed ? item.label : undefined}
+                  aria-label={item.label}
                   className={({ isActive }) =>
                     cn(
-                      "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 text-sm",
+                      collapsed && "lg:justify-center",
                       isActive
-                        ? "bg-primary text-white shadow-md shadow-primary/20"
-                        : "text-muted hover:bg-secondary/30 hover:text-text"
+                        ? "bg-primary text-white shadow-sm"
+                        : "text-muted hover:bg-slate-50 hover:text-text"
                     )
                   }
                 >
-                  <item.icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
+                  <item.icon className="w-[18px] h-[18px] shrink-0" />
+                  <span className={cn("font-medium truncate", collapsed && "lg:hidden")}>{item.label}</span>
                 </NavLink>
               ))}
             </div>
@@ -118,22 +141,56 @@ export default function Sidebar({ onClose, className }: SidebarProps) {
         ))}
       </nav>
 
-      {/* Info do usuário logado e diagnóstico */}
-      <div className="px-4 pb-2 space-y-2">
-        <div className="px-4 py-2 rounded-xl bg-secondary/20 text-xs text-muted truncate">
-          <p className="font-bold">Usuário:</p>
-          <p className="truncate">{user?.email}</p>
-          <p className="mt-1 font-bold">Status: <span className={roleColor}>{roleLabel}</span></p>
+      {/* Recolher/Expandir — só existe no desktop; no celular a sidebar vira
+          gaveta/menu inferior (ver Layout.tsx), não precisa recolher. */}
+      {onToggleCollapse && (
+        <div className="hidden lg:block px-3 pb-1">
+          <button
+            onClick={onToggleCollapse}
+            title={collapsed ? 'Expandir menu' : 'Recolher menu'}
+            aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+            className={cn(
+              "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-muted hover:bg-slate-50 hover:text-text transition-all duration-150 text-sm font-medium",
+              collapsed && "justify-center"
+            )}
+          >
+            {collapsed ? <PanelLeftOpen className="w-[18px] h-[18px] shrink-0" /> : <PanelLeftClose className="w-[18px] h-[18px] shrink-0" />}
+            {!collapsed && <span>Recolher menu</span>}
+          </button>
+        </div>
+      )}
+
+      {/* Info do usuário logado */}
+      <div className={cn("px-3 pb-2", collapsed && "lg:flex lg:justify-center")}>
+        <div
+          className={cn(
+            "rounded-lg bg-slate-50 border border-slate-100 flex items-center gap-3 transition-all",
+            collapsed ? "lg:p-0 lg:bg-transparent lg:border-0 p-3" : "p-3"
+          )}
+          title={collapsed ? `${displayName} · ${roleLabel}` : undefined}
+        >
+          <div className="w-8 h-8 rounded-full bg-primary/15 text-primary-dark font-semibold text-xs flex items-center justify-center shrink-0">
+            {initial}
+          </div>
+          <div className={cn("min-w-0 flex-1", collapsed && "lg:hidden")}>
+            <p className="text-xs font-semibold text-text truncate">{displayName}</p>
+            <span className={cn(roleBadgeClass, "mt-1 !py-0.5 !px-2")}>{roleLabel}</span>
+          </div>
         </div>
       </div>
 
-      <div className="p-4 border-t border-secondary">
+      <div className="p-3 border-t border-slate-100">
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 w-full px-4 py-3 text-muted hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+          title={collapsed ? 'Sair' : undefined}
+          aria-label="Sair"
+          className={cn(
+            "flex items-center gap-3 w-full px-3 py-2.5 text-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-all duration-150 text-sm",
+            collapsed && "lg:justify-center"
+          )}
         >
-          <LogOut className="w-5 h-5" />
-          <span className="font-medium">Sair</span>
+          <LogOut className="w-[18px] h-[18px] shrink-0" />
+          <span className={cn("font-medium", collapsed && "lg:hidden")}>Sair</span>
         </button>
       </div>
     </aside>
