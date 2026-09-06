@@ -55,6 +55,12 @@ export default function Dashboard() {
   const [allAppointments, setAllAppointments] = React.useState<Appointment[]>([]);
   const [allStaff, setAllStaff] = React.useState<any[]>([]);
   const [allServices, setAllServices] = React.useState<any[]>([]);
+  const [allClients, setAllClients] = React.useState<any[]>([]);
+
+  const getClientName = (clientId?: string) => {
+    if (!clientId) return 'Cliente';
+    return allClients.find((c: any) => c.id === clientId)?.name || 'Cliente';
+  };
 
   const getIllustration = (category?: string) => {
     const cat = category?.toLowerCase() || '';
@@ -75,6 +81,7 @@ export default function Dashboard() {
   React.useEffect(() => {
     const unsubscribeClients = onSnapshot(collection(db, 'clients'), (snap) => {
       setStats(prev => ({ ...prev, clients: snap.size }));
+      setAllClients(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     const unsubscribeProducts = onSnapshot(collection(db, 'products'), (snap) => {
@@ -86,10 +93,18 @@ export default function Dashboard() {
       setAllAppointments(apps);
     });
 
-    const unsubscribeTransactions = onSnapshot(collection(db, 'transactions'), (snap) => {
-      const txs = snap.docs.map(doc => doc.data());
-      setAllTransactions(txs);
-    });
+    // Financeiro (transactions) só é exibido para admin no Dashboard, e as
+    // regras do Firestore também restringem a leitura dessa coleção a admin
+    // — então só assinamos esse listener quando isAdmin for verdadeiro.
+    let unsubscribeTransactions = () => {};
+    if (isAdmin) {
+      unsubscribeTransactions = onSnapshot(collection(db, 'transactions'), (snap) => {
+        const txs = snap.docs.map(doc => doc.data());
+        setAllTransactions(txs);
+      });
+    } else {
+      setAllTransactions([]);
+    }
 
     const unsubscribeStaff = onSnapshot(collection(db, 'staff'), (snap) => {
       const staffData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -109,7 +124,7 @@ export default function Dashboard() {
       unsubscribeStaff();
       unsubscribeServices();
     };
-  }, []);
+  }, [isAdmin]);
 
   // Cálculo de estatísticas baseado na data selecionada
   React.useEffect(() => {
@@ -200,34 +215,51 @@ export default function Dashboard() {
     }));
     setWeeklyData(weekly);
 
-  }, [selectedDate, allAppointments, allTransactions]);
+  }, [selectedDate, allAppointments, allTransactions, allStaff, isAdmin]);
 
   // Buscar profissional logado (por UID ou E-mail para garantir)
   const staffMember = allStaff.find(s => s.uid === user?.uid) || allStaff.find(s => s.email === user?.email);
   
-  // Filtrar serviços habilitados (Case-Insensitive para garantir que carregue tudo)
-  const staffSpecialties = (staffMember?.specialties || []).map(s => s.toLowerCase());
-  const habilitatedServices = allServices.filter(s => 
-     staffSpecialties.includes((s.category || 'Geral').toLowerCase())
-  );
+  // Serviços habilitados para este profissional. Antes checava um campo
+  // "specialties" que não existe no tipo Staff (sempre undefined, então a
+  // lista ficava sempre vazia) — o correto é enabledCategories, o mesmo
+  // campo já usado para isso em AppointmentCalendar.tsx.
+  const staffCategories = staffMember?.enabledCategories || [];
+  const habilitatedServices = staffCategories.length === 0
+     ? allServices
+     : allServices.filter(s => staffCategories.includes(s.category || ''));
+
+  // Lógica de Saudação Personalizada
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Bom dia';
+    if (hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+  };
+
+  const getFirstName = (fullName?: string) => {
+    return fullName?.split(' ')[0] || 'Studio';
+  };
 
   if (isMobile) {
     return (
-      <div className="space-y-6 pb-24 px-4 pt-4 animate-in fade-in duration-500 bg-[#FDFDFD] min-h-screen">
-        <header className="flex justify-between items-center bg-white p-4 rounded-[2rem] shadow-premium border border-secondary/20">
+      <div className="space-y-6 pb-24 px-4 pt-4 animate-in fade-in duration-500 bg-[#FBF7F6] min-h-screen">
+        <header className="flex justify-between items-center bg-white p-4 rounded-4xl shadow-premium border border-secondary/20">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center border border-primary/5">
-              <span className="text-xl font-black text-primary">A</span>
+              <span className="text-xl font-semibold text-primary">A</span>
             </div>
             <div>
-               <h2 className="text-lg font-black text-text uppercase tracking-tighter leading-tight">Olá, Ale!</h2>
+               <h2 className="text-lg font-semibold text-text uppercase tracking-tighter leading-tight">
+                 {getGreeting()}, {getFirstName(profile?.name || user?.displayName)}!
+               </h2>
                <div className="flex items-center gap-2">
                  <Calendar className="w-3 h-3 text-primary" />
                  <input 
                    type="date" 
                    value={selectedDate} 
                    onChange={(e) => setSelectedDate(e.target.value)}
-                   className="text-[9px] font-black text-muted uppercase tracking-widest bg-transparent border-none p-0 focus:ring-0"
+                   className="text-[9px] font-semibold text-muted uppercase tracking-widest bg-transparent border-none p-0 focus:ring-0"
                  />
                </div>
             </div>
@@ -239,10 +271,10 @@ export default function Dashboard() {
         {!isAdmin && staffMember && (
            <div className="space-y-6 pt-2">
               <div className="flex items-center justify-between px-2">
-                 <h3 className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
+                 <h3 className="text-[10px] font-semibold text-muted uppercase tracking-widest flex items-center gap-2">
                     <Scissors className="w-4 h-4 text-primary" /> Portfólio Profissional Completo
                  </h3>
-                 <span className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1 rounded-full uppercase tracking-tighter">
+                 <span className="text-[10px] font-semibold text-primary bg-primary/10 px-3 py-1 rounded-full uppercase tracking-tighter">
                     {habilitatedServices.length} Procedimentos
                  </span>
               </div>
@@ -256,11 +288,11 @@ export default function Dashboard() {
                       <div key={s.id} className={cn("mobile-card p-4 bg-white border-l-4 shadow-sm flex flex-col justify-center animate-in slide-in-from-top duration-300", specColor)}>
                          <div className="flex justify-between items-start">
                             <div>
-                               <span className="text-[7px] font-black uppercase text-muted tracking-[0.2em] mb-1 block">{s.category}</span>
-                               <h4 className="text-sm font-black text-text uppercase tracking-tighter leading-tight">{s.name}</h4>
+                               <span className="text-[7px] font-semibold uppercase text-muted tracking-widest mb-1 block">{s.category}</span>
+                               <h4 className="text-sm font-semibold text-text uppercase tracking-tighter leading-tight">{s.name}</h4>
                             </div>
                             <div className="text-right">
-                               <p className="text-base font-black text-accent tracking-tighter leading-none">{formatCurrency(s.price)}</p>
+                               <p className="text-base font-semibold text-accent tracking-tighter leading-none">{formatCurrency(s.price)}</p>
                             </div>
                          </div>
                       </div>
@@ -282,21 +314,21 @@ export default function Dashboard() {
           <div className="mobile-card p-5 bg-white border border-secondary shadow-premium relative overflow-hidden flex flex-col justify-between h-32">
              <div className="flex justify-between items-start">
                 <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary"><TrendingUp className="w-5 h-5" /></div>
-                <span className="text-[8px] font-black text-green-600 bg-green-50 px-2 py-0.5 rounded-full">+{stats.revenueTrend} <ArrowUpRight className="w-2 h-2 inline" /></span>
+                <span className="text-[8px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">+{stats.revenueTrend} <ArrowUpRight className="w-2 h-2 inline" /></span>
              </div>
              <div>
-                <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Faturamento</p>
-                <h3 className="text-2xl font-black text-text truncate leading-none">{isAdmin ? formatCurrency(stats.revenue) : formatCurrency(stats.commissions)}</h3>
+                <p className="text-[9px] font-semibold text-muted uppercase tracking-widest mb-1">Faturamento</p>
+                <h3 className="text-2xl font-semibold text-text truncate leading-none">{isAdmin ? formatCurrency(stats.revenue) : formatCurrency(stats.commissions)}</h3>
              </div>
           </div>
           <div className="mobile-card p-5 bg-white border border-secondary shadow-premium relative overflow-hidden flex flex-col justify-between h-32">
              <div className="flex justify-between items-start">
                  <div className="w-10 h-10 rounded-2xl bg-accent/10 flex items-center justify-center text-accent"><Calendar className="w-5 h-5" /></div>
-                 <span className="text-[8px] font-black text-accent bg-accent/5 px-2 py-1 rounded-lg">LIVE</span>
+                 <span className="text-[8px] font-semibold text-accent bg-accent/5 px-2 py-1 rounded-lg">LIVE</span>
              </div>
              <div>
-                <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Agendados</p>
-                <h3 className="text-2xl font-black text-text leading-none">{stats.appointments}</h3>
+                <p className="text-[9px] font-semibold text-muted uppercase tracking-widest mb-1">Agendados</p>
+                <h3 className="text-2xl font-semibold text-text leading-none">{stats.appointments}</h3>
              </div>
           </div>
         </div>
@@ -304,14 +336,14 @@ export default function Dashboard() {
         {/* Weekly Performance Mobile */}
         {isAdmin && (
            <div className="mobile-card p-5 bg-white border border-secondary shadow-premium">
-              <h3 className="text-[10px] font-black text-muted uppercase tracking-widest mb-4">Desempenho Semanal</h3>
+              <h3 className="text-[10px] font-semibold text-muted uppercase tracking-widest mb-4">Desempenho Semanal</h3>
               <div className="h-[150px]">
                  <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={weeklyData}>
                        <defs>
-                         <linearGradient id="mobileGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#FFB7C5" stopOpacity={0.4}/><stop offset="95%" stopColor="#FFB7C5" stopOpacity={0}/></linearGradient>
+                         <linearGradient id="mobileGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#E38EA0" stopOpacity={0.4}/><stop offset="95%" stopColor="#E38EA0" stopOpacity={0}/></linearGradient>
                        </defs>
-                       <Area type="monotone" dataKey="value" stroke="#FFB7C5" strokeWidth={3} fill="url(#mobileGrad)" />
+                       <Area type="monotone" dataKey="value" stroke="#E38EA0" strokeWidth={3} fill="url(#mobileGrad)" />
                     </AreaChart>
                  </ResponsiveContainer>
               </div>
@@ -321,28 +353,30 @@ export default function Dashboard() {
         {/* Upcoming List Mobile */}
         <div className="space-y-4">
            <div className="flex justify-between items-center px-1">
-              <h3 className="text-[10px] font-black text-muted uppercase tracking-widest">Atendimentos de Hoje</h3>
-              <button onClick={() => navigate('/agenda')} className="text-[10px] font-black text-primary uppercase flex items-center gap-1">Ver todos <ArrowRight className="w-3 h-3" /></button>
+              <h3 className="text-[10px] font-semibold text-muted uppercase tracking-widest">Atendimentos de Hoje</h3>
+              <button onClick={() => navigate('/agenda')} className="text-[10px] font-semibold text-primary uppercase flex items-center gap-1">Ver todos <ArrowRight className="w-3 h-3" /></button>
            </div>
            {upcomingAppointments.length === 0 ? (
              <div className="mobile-card p-10 text-center text-muted italic text-xs">Sem agendamentos hoje.</div>
            ) : (
-             upcomingAppointments.map(app => (
+             upcomingAppointments.map(app => {
+               const clientName = getClientName(app.clientId);
+               return (
                <div key={app.id} className="mobile-card p-4 bg-white border border-secondary/20 flex justify-between items-center shadow-premium">
                   <div className="flex gap-3 items-center">
-                     <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center font-black text-text border border-secondary/20">{app.clientName?.[0] || '?'}</div>
+                     <div className="w-10 h-10 rounded-2xl bg-secondary/10 flex items-center justify-center font-semibold text-text border border-secondary/20">{clientName?.[0] || '?'}</div>
                      <div>
-                        <h4 className="text-xs font-black text-text uppercase tracking-tight truncate max-w-[120px]">{app.clientName}</h4>
-                        <p className="text-[9px] font-bold text-muted">{app.serviceName}</p>
+                        <h4 className="text-xs font-semibold text-text uppercase tracking-tight truncate max-w-[120px]">{clientName}</h4>
+                        <p className="text-[9px] font-bold text-muted">{app.service}</p>
                      </div>
                   </div>
                   <div className="text-right">
                      <div className="flex items-center gap-1 text-primary">
                         <Clock className="w-3 h-3" />
-                        <span className="text-xs font-black">{format(parseISO(app.date), 'HH:mm')}</span>
+                        <span className="text-xs font-semibold">{format(parseISO(app.date), 'HH:mm')}</span>
                      </div>
                       <span className={cn(
-                        "text-[8px] font-black uppercase",
+                        "text-[8px] font-semibold uppercase",
                         app.status === 'completed' ? "text-green-600" : 
                         app.status === 'cancelled' ? "text-red-600" : "text-accent"
                       )}>
@@ -350,7 +384,8 @@ export default function Dashboard() {
                       </span>
                   </div>
                </div>
-             ))
+               );
+             })
            )}
         </div>
       </div>
@@ -362,9 +397,11 @@ export default function Dashboard() {
     <div className="space-y-8 animate-in fade-in duration-500">
       <header className="flex justify-between items-end">
         <div>
-          <h2 className="text-4xl font-black text-text tracking-tighter uppercase leading-none">Visão Geral</h2>
+          <h2 className="text-4xl font-display font-semibold text-text tracking-tight leading-none">
+            {getGreeting()}, {getFirstName(profile?.name || user?.displayName)}!
+          </h2>
           <p className="text-muted mt-2 font-bold italic tracking-wide">
-            Bem-vind{profile?.name?.toLowerCase().includes('ale') ? 'a' : 'o'} de volta, {profile?.name?.split(' ')[0] || 'Alê'}! O estúdio está pronto.
+            Seja bem-vind{profile?.name?.toLowerCase().includes('ale') ? 'a' : 'o'}! O estúdio está pronto para hoje.
           </p>
         </div>
         <div className="bg-white/70 backdrop-blur-md px-6 py-3 rounded-full border border-secondary shadow-premium flex items-center gap-3">
@@ -373,7 +410,7 @@ export default function Dashboard() {
             type="date" 
             value={selectedDate} 
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="text-xs font-black uppercase tracking-widest bg-transparent border-none focus:ring-0 cursor-pointer"
+            className="text-xs font-semibold uppercase tracking-widest bg-transparent border-none focus:ring-0 cursor-pointer"
           />
         </div>
       </header>
@@ -384,9 +421,9 @@ export default function Dashboard() {
             <header className="flex flex-col gap-2 border-b border-secondary/20 pb-8">
                <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-primary" />
-                  <span className="text-[10px] font-black uppercase text-primary tracking-[0.4em]">Personal Portfolio</span>
+                  <span className="text-[10px] font-semibold uppercase text-primary tracking-widest">Personal Portfolio</span>
                </div>
-               <h2 className="text-4xl font-black text-text uppercase tracking-tighter">Meus Procedimentos</h2>
+               <h2 className="text-4xl font-display font-semibold text-text tracking-tight">Meus Procedimentos</h2>
                <p className="text-muted font-bold text-sm uppercase opacity-40 tracking-wider">Garantiu-se o carregamento de todos os {habilitatedServices.length} serviços registrados para sua especialidade.</p>
             </header>
 
@@ -403,8 +440,8 @@ export default function Dashboard() {
                        <div className="flex flex-col justify-between h-full">
                           <header className="flex justify-between items-start mb-6">
                              <div>
-                                <span className="text-[8px] font-black uppercase text-muted tracking-[0.3em] mb-1 block">{s.category || 'Geral'}</span>
-                                <h4 className="text-lg font-black text-text uppercase tracking-tighter leading-tight group-hover:text-primary transition-colors">{s.name}</h4>
+                                <span className="text-[8px] font-semibold uppercase text-muted tracking-widest mb-1 block">{s.category || 'Geral'}</span>
+                                <h4 className="text-lg font-semibold text-text uppercase tracking-tighter leading-tight group-hover:text-primary transition-colors">{s.name}</h4>
                              </div>
                              <div className="w-8 h-8 rounded-xl bg-secondary/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
                                 <Scissors className="w-4 h-4 text-primary" />
@@ -415,12 +452,12 @@ export default function Dashboard() {
                              <div className="space-y-1">
                                 <div className="flex items-center gap-1.5 opacity-40">
                                    <Clock className="w-3 h-3 text-text" />
-                                   <span className="text-[9px] font-black text-text uppercase tracking-widest">{s.duration ?? 30} min</span>
+                                   <span className="text-[9px] font-semibold text-text uppercase tracking-widest">{s.duration ?? 30} min</span>
                                 </div>
-                                <p className="text-xl font-black text-accent tracking-tighter leading-none">{formatCurrency(s.price)}</p>
+                                <p className="text-xl font-semibold text-accent tracking-tighter leading-none">{formatCurrency(s.price)}</p>
                              </div>
                              <div className="px-3 py-1 bg-secondary/5 rounded-lg">
-                                <span className="text-[7px] font-black uppercase tracking-[0.2em] text-muted">Premium Care</span>
+                                <span className="text-[7px] font-semibold uppercase tracking-widest text-muted">Premium Care</span>
                              </div>
                           </div>
                        </div>
@@ -431,7 +468,7 @@ export default function Dashboard() {
             
             {habilitatedServices.length === 0 && (
                <div className="p-20 text-center border-2 border-dashed border-secondary/30 rounded-3xl bg-secondary/5">
-                  <p className="text-sm font-black text-muted uppercase tracking-widest">Nenhum serviço disponível para sua especialidade atual.</p>
+                  <p className="text-sm font-semibold text-muted uppercase tracking-widest">Nenhum serviço disponível para sua especialidade atual.</p>
                </div>
             )}
          </div>
@@ -488,16 +525,16 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {isAdmin && (
           <div className="glass-card p-8 bg-white/80 shadow-premium">
-            <h3 className="text-xs font-black text-muted uppercase tracking-widest mb-8 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-primary" /> Desempenho de Vendas</h3>
+            <h3 className="text-xs font-semibold text-muted uppercase tracking-widest mb-8 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-primary" /> Desempenho de Vendas</h3>
             <div className="h-[350px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={weeklyData}>
-                  <defs><linearGradient id="deskGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#FFB7C5" stopOpacity={0.3}/><stop offset="95%" stopColor="#FFB7C5" stopOpacity={0}/></linearGradient></defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F5E6D3" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10, fontWeight: 800 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#666', fontSize: 10 }} />
+                  <defs><linearGradient id="deskGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#E38EA0" stopOpacity={0.3}/><stop offset="95%" stopColor="#E38EA0" stopOpacity={0}/></linearGradient></defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1E2E0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#8C7876', fontSize: 10, fontWeight: 600 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#8C7876', fontSize: 10 }} />
                   <Tooltip formatter={(v: number) => formatCurrency(v)} contentStyle={{ backgroundColor: '#fff', borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }} />
-                  <Area type="monotone" dataKey="value" stroke="#FFB7C5" strokeWidth={5} fill="url(#deskGrad)" />
+                  <Area type="monotone" dataKey="value" stroke="#E38EA0" strokeWidth={5} fill="url(#deskGrad)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -506,22 +543,24 @@ export default function Dashboard() {
 
         <div className={cn("glass-card p-8 bg-white/80 shadow-premium", !isAdmin && "lg:col-span-2")}>
           <div className="flex justify-between items-center mb-8">
-            <h3 className="text-xs font-black text-muted uppercase tracking-widest flex items-center gap-2"><Clock className="w-4 h-4 text-primary" /> Próximos Atendimentos</h3>
-            <button onClick={() => navigate('/agenda')} className="btn-secondary py-2 px-4 text-[10px] font-black uppercase">Ver Agenda Completa</button>
+            <h3 className="text-xs font-semibold text-muted uppercase tracking-widest flex items-center gap-2"><Clock className="w-4 h-4 text-primary" /> Próximos Atendimentos</h3>
+            <button onClick={() => navigate('/agenda')} className="btn-secondary py-2 px-4 text-[10px] font-semibold uppercase">Ver Agenda Completa</button>
           </div>
           <div className="space-y-4">
-            {upcomingAppointments.map((app) => (
+            {upcomingAppointments.map((app) => {
+              const clientName = getClientName(app.clientId);
+              return (
               <div key={app.id} className="flex items-center justify-between p-5 rounded-3xl bg-secondary/5 border border-secondary/10 hover:border-primary/30 transition-all group">
                 <div className="flex items-center gap-5">
-                  <div className="w-14 h-14 rounded-[1.5rem] bg-white shadow-sm flex items-center justify-center font-black text-primary text-xl border border-secondary/20 group-hover:bg-primary group-hover:text-white transition-colors">{app.clientName?.[0] || '?'}</div>
+                  <div className="w-14 h-14 rounded-3xl bg-white shadow-sm flex items-center justify-center font-semibold text-primary text-xl border border-secondary/20 group-hover:bg-primary group-hover:text-white transition-colors">{clientName?.[0] || '?'}</div>
                   <div>
-                    <p className="font-black text-text uppercase tracking-tighter text-lg">{app.clientName}</p>
-                    <p className="text-[10px] font-black text-muted uppercase tracking-widest italic">{app.serviceName} • {format(parseISO(app.date), 'HH:mm')}</p>
+                    <p className="font-semibold text-text uppercase tracking-tighter text-lg">{clientName}</p>
+                    <p className="text-[10px] font-semibold text-muted uppercase tracking-widest italic">{app.service} • {format(parseISO(app.date), 'HH:mm')}</p>
                   </div>
                 </div>
                 <div className="text-right">
                    <span className={cn( 
-                     "px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm", 
+                     "px-4 py-1.5 rounded-full text-[9px] font-semibold uppercase tracking-widest border shadow-sm", 
                      app.status === 'completed' ? "bg-green-50 text-green-700 border-green-100" : 
                      app.status === 'cancelled' ? "bg-red-50 text-red-700 border-red-100" :
                      "bg-primary/5 text-primary border-primary/10" 
@@ -530,7 +569,8 @@ export default function Dashboard() {
                    </span>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -546,7 +586,7 @@ function StatCard({ title, value, icon: Icon, trend, trendUp, color }: any) {
             <Icon className="w-7 h-7" />
          </div>
          <div className={cn(
-            "px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-tighter flex items-center gap-1 shadow-sm",
+            "px-3 py-1.5 rounded-xl text-[9px] font-semibold uppercase tracking-tighter flex items-center gap-1 shadow-sm",
             trendUp ? "bg-green-50 text-green-600 border border-green-100" : "bg-red-50 text-red-600 border border-red-100"
          )}>
             {trend} <ArrowUpRight className={cn("w-3 h-3", !trendUp && "rotate-90")} />
@@ -554,8 +594,8 @@ function StatCard({ title, value, icon: Icon, trend, trendUp, color }: any) {
       </header>
       
       <div className="mt-8">
-         <span className="text-[10px] font-black text-muted uppercase tracking-[0.2em] mb-1 block opacity-50">{title}</span>
-         <h4 className="text-4xl font-black text-text tracking-tighter leading-none group-hover:text-primary transition-colors">{value}</h4>
+         <span className="text-[10px] font-semibold text-muted uppercase tracking-widest mb-1 block opacity-50">{title}</span>
+         <h4 className="text-4xl font-semibold text-text tracking-tighter leading-none group-hover:text-primary transition-colors">{value}</h4>
       </div>
       
       {/* Decorative background element */}
@@ -566,9 +606,9 @@ function StatCard({ title, value, icon: Icon, trend, trendUp, color }: any) {
 
 function QuickAction({ icon: Icon, label, onClick, color }: any) {
    return (
-      <button onClick={onClick} className="flex flex-col items-center gap-2 p-4 bg-white rounded-[2rem] shadow-premium border border-secondary/20 active:scale-90 transition-all">
+      <button onClick={onClick} className="flex flex-col items-center gap-2 p-4 bg-white rounded-4xl shadow-premium border border-secondary/20 active:scale-90 transition-all">
          <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner", color)}><Icon className="w-6 h-6" /></div>
-         <span className="text-[9px] font-black text-text uppercase tracking-tighter">{label}</span>
+         <span className="text-[9px] font-semibold text-text uppercase tracking-tighter">{label}</span>
       </button>
    );
 }

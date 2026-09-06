@@ -5,8 +5,8 @@ import {
   X, ChevronRight, Sparkles, CreditCard
 } from 'lucide-react';
 import { 
-  collection, onSnapshot, addDoc, doc, 
-  updateDoc, increment, runTransaction, writeBatch 
+  collection, onSnapshot, doc, 
+  runTransaction 
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { Product, Client } from '../types';
@@ -76,32 +76,43 @@ export default function ProductPOS() {
     setLoading(true);
     try {
       const client = clients.find(c => c.id === selectedClientId);
-      const batch = writeBatch(db);
-      
-      for (const item of cart) {
-        // 1. Update Stock
-        const productRef = doc(db, 'products', item.id);
-        batch.update(productRef, {
-          stock: increment(-item.quantity)
+
+      // runTransaction lê o estoque atual dentro da própria transação e só
+      // confirma a venda se ainda houver saldo suficiente — evita que dois
+      // PDVs vendendo o mesmo produto ao mesmo tempo derrubem o estoque
+      // para negativo (o writeBatch anterior aplicava um decremento "cego",
+      // sem checar o valor atual no servidor).
+      await runTransaction(db, async (transaction) => {
+        const productRefs = cart.map(item => doc(db, 'products', item.id));
+        const productSnaps = await Promise.all(productRefs.map(ref => transaction.get(ref)));
+
+        productSnaps.forEach((snap, idx) => {
+          const item = cart[idx];
+          const currentStock = Number(snap.data()?.stock ?? 0);
+          if (currentStock < item.quantity) {
+            throw new Error(`Estoque insuficiente para "${item.name}" (disponível: ${currentStock}).`);
+          }
         });
 
-        // 2. Create Transaction
-        const transactionRef = doc(collection(db, 'transactions'));
-        batch.set(transactionRef, {
-          type: 'income',
-          category: 'Venda de Produto',
-          amount: Number(item.salePrice * item.quantity),
-          description: `Venda: ${item.quantity}x ${item.name}${client ? ' para ' + client.name : ''}`,
-          date: format(new Date(), 'yyyy-MM-dd'),
-          creatorId: user?.uid,
-          creatorName: profile?.name || user?.displayName || 'Sistema',
-          clientName: client?.name || 'Cliente Avulso',
-          clientId: selectedClientId || null,
-          createdAt: new Date().toISOString()
-        });
-      }
+        cart.forEach((item, idx) => {
+          const currentStock = Number(productSnaps[idx].data()?.stock ?? 0);
+          transaction.update(productRefs[idx], { stock: currentStock - item.quantity });
 
-      await batch.commit();
+          const transactionRef = doc(collection(db, 'transactions'));
+          transaction.set(transactionRef, {
+            type: 'income',
+            category: 'Venda de Produto',
+            amount: Number(item.salePrice * item.quantity),
+            description: `Venda: ${item.quantity}x ${item.name}${client ? ' para ' + client.name : ''}`,
+            date: format(new Date(), 'yyyy-MM-dd'),
+            creatorId: user?.uid,
+            creatorName: profile?.name || user?.displayName || 'Sistema',
+            clientName: client?.name || 'Cliente Avulso',
+            clientId: selectedClientId || null,
+            createdAt: new Date().toISOString()
+          });
+        });
+      });
 
       setCart([]);
       setSelectedClientId('');
@@ -121,15 +132,15 @@ export default function ProductPOS() {
       <div className="flex-1 space-y-8">
         <header className="space-y-2">
            <div className="flex items-center gap-3">
-             <div className="w-2 h-8 bg-[#FFB6C1] rounded-full shadow-[0_0_15px_rgba(255,182,193,0.5)]" />
-             <h2 className="text-4xl font-black text-slate-800 uppercase tracking-tight">Vender Produtos</h2>
+             <div className="w-2 h-8 bg-[#E38EA0] rounded-full shadow-[0_0_15px_rgba(255,182,193,0.5)]" />
+             <h2 className="text-4xl font-display font-semibold text-slate-800 tracking-tight">Vender Produtos</h2>
            </div>
            <p className="text-slate-400 font-bold text-sm uppercase tracking-widest ml-5">Agilidade no PDV para sua lojinha.</p>
         </header>
 
         <div className="relative group">
            <div className="absolute left-6 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center">
-              <Search className="w-5 h-5 text-[#FFB6C1] transition-transform group-focus-within:scale-110" />
+              <Search className="w-5 h-5 text-[#E38EA0] transition-transform group-focus-within:scale-110" />
            </div>
            <input 
               type="text" 
@@ -148,18 +159,18 @@ export default function ProductPOS() {
                disabled={product.stock <= 0}
                className={cn(
                  "card-premium p-6 text-left group transition-all active:scale-95",
-                 product.stock <= 0 ? "opacity-50 grayscale cursor-not-allowed" : "hover:border-[#FFB6C1]"
+                 product.stock <= 0 ? "opacity-50 grayscale cursor-not-allowed" : "hover:border-[#E38EA0]"
                )}
              >
-                <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center mb-4 border border-pink-100 group-hover:bg-[#FFB6C1] group-hover:text-white transition-colors">
+                <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center mb-4 border border-pink-100 group-hover:bg-[#E38EA0] group-hover:text-white transition-colors">
                    <Package className="w-6 h-6" />
                 </div>
-                <p className="text-[9px] font-black text-[#FFB6C1] uppercase tracking-widest mb-1">{product.category}</p>
-                <h3 className="text-sm font-black text-slate-800 uppercase leading-snug mb-3 h-10 overflow-hidden line-clamp-2">{product.name}</h3>
+                <p className="text-[9px] font-semibold text-[#E38EA0] uppercase tracking-widest mb-1">{product.category}</p>
+                <h3 className="text-sm font-semibold text-slate-800 uppercase leading-snug mb-3 h-10 overflow-hidden line-clamp-2">{product.name}</h3>
                 <div className="flex items-center justify-between mt-auto">
-                   <span className="text-lg font-black text-slate-800 font-mono tracking-tighter">{formatCurrency(product.salePrice)}</span>
+                   <span className="text-lg font-semibold text-slate-800 font-mono tracking-tighter">{formatCurrency(product.salePrice)}</span>
                    <span className={cn(
-                     "text-[9px] font-black px-2 py-1 rounded-lg uppercase",
+                     "text-[9px] font-semibold px-2 py-1 rounded-lg uppercase",
                      product.stock < 5 ? "bg-red-50 text-red-400" : "bg-slate-50 text-slate-400"
                    )}>
                      {product.stock} un
@@ -172,12 +183,12 @@ export default function ProductPOS() {
 
       {/* RIGHT: SHOPPING CART / CHECKOUT (Sticky on Desktop, Bottom Sheet on Mobile) */}
       <div className="lg:w-[400px] shrink-0">
-         <div className="bg-white rounded-[2rem] shadow-xl border border-pink-50 p-6 md:p-8 sticky top-10 flex flex-col h-fit lg:max-h-[calc(100vh-100px)]">
+         <div className="bg-white rounded-4xl shadow-xl border border-pink-50 p-6 md:p-8 sticky top-10 flex flex-col h-fit lg:max-h-[calc(100vh-100px)]">
             <div className="flex items-center justify-between mb-6">
-               <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter flex items-center gap-2">
-                 <ShoppingCart className="w-5 h-5 text-[#FFB6C1]" /> Carrinho
+               <h3 className="text-xl font-semibold text-slate-800 uppercase tracking-tighter flex items-center gap-2">
+                 <ShoppingCart className="w-5 h-5 text-[#E38EA0]" /> Carrinho
                </h3>
-               {cart.length > 0 && <button onClick={() => setCart([])} className="text-[9px] font-black text-red-300 uppercase hover:text-red-500 transition-colors">Limpar</button>}
+               {cart.length > 0 && <button onClick={() => setCart([])} className="text-[9px] font-semibold text-red-300 uppercase hover:text-red-500 transition-colors">Limpar</button>}
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-3 pr-2 -mr-2 min-h-[150px]">
@@ -188,16 +199,16 @@ export default function ProductPOS() {
                  </div>
                ) : (
                  cart.map(item => (
-                   <div key={item.id} className="bg-[#FFFDFB] p-4 rounded-2xl border border-pink-50/50 flex items-center justify-between group">
+                   <div key={item.id} className="bg-[#FBF7F6] p-4 rounded-2xl border border-pink-50/50 flex items-center justify-between group">
                       <div className="flex-1 min-w-0 mr-3">
-                         <h4 className="text-[11px] font-black text-slate-800 uppercase truncate">{item.name}</h4>
-                         <p className="text-[9px] font-black text-[#FFB6C1] font-mono mt-0.5">{formatCurrency(item.salePrice)}</p>
+                         <h4 className="text-[11px] font-semibold text-slate-800 uppercase truncate">{item.name}</h4>
+                         <p className="text-[9px] font-semibold text-[#E38EA0] font-mono mt-0.5">{formatCurrency(item.salePrice)}</p>
                       </div>
                       <div className="flex items-center gap-2">
                          <div className="flex items-center bg-white rounded-lg border border-pink-50 p-0.5">
-                            <button onClick={() => updateQuantity(item.id, -1)} className="p-1 text-slate-300 hover:text-[#FFB6C1] transition-colors"><Minus className="w-3 h-3" /></button>
-                            <span className="w-6 text-center text-[10px] font-black text-slate-700">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.id, 1)} className="p-1 text-slate-300 hover:text-[#FFB6C1] transition-colors"><Plus className="w-3 h-3" /></button>
+                            <button onClick={() => updateQuantity(item.id, -1)} className="p-1 text-slate-300 hover:text-[#E38EA0] transition-colors"><Minus className="w-3 h-3" /></button>
+                            <span className="w-6 text-center text-[10px] font-semibold text-slate-700">{item.quantity}</span>
+                            <button onClick={() => updateQuantity(item.id, 1)} className="p-1 text-slate-300 hover:text-[#E38EA0] transition-colors"><Plus className="w-3 h-3" /></button>
                          </div>
                          <button onClick={() => removeFromCart(item.id)} className="p-1.5 text-red-100 hover:text-red-400 transition-colors"><X className="w-3.5 h-3.5" /></button>
                       </div>
@@ -212,7 +223,7 @@ export default function ProductPOS() {
                      <label className="floating-label">Vincular Cliente (Opcional)</label>
                      <div className="relative">
                         <select 
-                          className="select-premium !py-3 !px-5 text-[10px] font-black uppercase tracking-widest"
+                          className="select-premium !py-3 !px-5 text-[10px] font-semibold uppercase tracking-widest"
                           value={selectedClientId}
                           onChange={e => setSelectedClientId(e.target.value)}
                         >
@@ -224,15 +235,15 @@ export default function ProductPOS() {
                </div>
 
                <div className="flex items-end justify-between px-1 mb-2">
-                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Total da Venda</span>
-                  <span className="text-3xl font-black text-slate-800 font-mono tracking-tighter leading-none italic">{formatCurrency(total)}</span>
+                  <span className="text-[10px] font-semibold text-slate-300 uppercase tracking-widest">Total da Venda</span>
+                  <span className="text-3xl font-semibold text-slate-800 font-mono tracking-tighter leading-none italic">{formatCurrency(total)}</span>
                </div>
 
                <button 
                  disabled={cart.length === 0 || loading}
                  onClick={handleCheckout}
                  className={cn(
-                   "w-full h-14 rounded-2xl btn-primary flex items-center justify-center gap-3 text-[11px] uppercase tracking-[0.2em] font-black transition-all shadow-xl active:scale-95 group",
+                   "w-full h-14 rounded-2xl btn-primary flex items-center justify-center gap-3 text-[11px] uppercase tracking-widest font-semibold transition-all shadow-xl active:scale-95 group",
                    (cart.length === 0 || loading) && "opacity-50 pointer-events-none"
                  )}
                >
@@ -251,10 +262,10 @@ export default function ProductPOS() {
       {/* Success Notification */}
       {showSuccess && (
         <div className="fixed top-10 right-4 md:right-10 z-[100] animate-fade-up">
-           <div className="bg-emerald-500 text-white p-6 rounded-[2rem] shadow-2xl flex items-center gap-4 border-4 border-emerald-400">
+           <div className="bg-emerald-500 text-white p-6 rounded-4xl shadow-2xl flex items-center gap-4 border-4 border-emerald-400">
               <CheckCircle2 className="w-8 h-8" />
               <div>
-                 <p className="text-sm font-black uppercase tracking-widest">Venda Realizada!</p>
+                 <p className="text-sm font-semibold uppercase tracking-widest">Venda Realizada!</p>
                  <p className="text-[10px] font-bold text-white/80 uppercase mt-0.5">O estoque foi atualizado e o caixa registrado.</p>
               </div>
            </div>

@@ -4,7 +4,6 @@ export interface Staff {
   name: string;
   phone: string;
   email: string;
-  password?: string; // Stored for admin reference (optional/not recommended but requested)
   specialty: string;
   commission: number;
   role: 'admin' | 'agente' | 'staff';
@@ -51,6 +50,7 @@ export interface Appointment {
   price: number;
   commissionAmount: number;
   marker?: string;
+  paymentMethod?: 'dinheiro' | 'debito' | 'credito' | '';
   createdAt: string;
 }
 
@@ -65,6 +65,7 @@ export interface Transaction {
   creatorName?: string;
   professionalId?: string;
   appointmentId?: string;
+  paymentMethod?: 'dinheiro' | 'debito' | 'credito' | '';
   createdAt: string;
 }
 

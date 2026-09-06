@@ -1,11 +1,11 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
-  UserCircle, 
-  Package, 
-  Calendar, 
-  DollarSign, 
+import {
+  LayoutDashboard,
+  Users,
+  UserCircle,
+  Package,
+  Calendar,
+  DollarSign,
   LogOut,
   Scissors,
   Settings,
@@ -27,30 +27,39 @@ export default function Sidebar({ onClose, className }: SidebarProps) {
   const navigate = useNavigate();
   const { isAdmin, isAgente, user } = useAuth();
 
-  // Itens visíveis para todos os usuários autenticados
-  // Itens visíveis para todos
-  const publicItems = [
-    { icon: LayoutDashboard, label: 'Início', path: '/' },
-    { icon: Calendar, label: isAdmin ? 'Agenda' : 'Serviços', path: '/agenda' },
-    { icon: UserCircle, label: 'Clientes', path: '/clientes' },
-    { icon: Package, label: 'Produtos', path: '/produtos' },
+  // Menu organizado por grupo de função, pra facilitar achar as coisas
+  // (pedido de acessibilidade/usabilidade da cliente).
+  const groups = [
+    {
+      label: 'Principal',
+      items: [
+        { icon: LayoutDashboard, label: 'Início', path: '/' },
+        { icon: Calendar, label: isAdmin ? 'Agenda' : 'Serviços', path: '/agenda' },
+      ]
+    },
+    {
+      label: 'Clientes & Vendas',
+      items: [
+        { icon: UserCircle, label: 'Clientes', path: '/clientes' },
+        { icon: Package, label: 'Produtos', path: '/produtos' },
+        ...(isAdmin ? [{ icon: ShoppingCart, label: 'Vender Produtos', path: '/vendas' }] : []),
+      ]
+    },
+    ...(isAdmin ? [{
+      label: 'Financeiro',
+      items: [
+        { icon: Banknote, label: 'Fluxo de Caixa', path: '/caixa' },
+        { icon: DollarSign, label: 'Financeiro Geral', path: '/financeiro' },
+      ]
+    }] : []),
+    ...(isAdmin ? [{
+      label: 'Studio',
+      items: [
+        { icon: Users, label: 'Equipe', path: '/equipe' },
+        { icon: Settings, label: 'Serviços do Studio', path: '/servicos' },
+      ]
+    }] : []),
   ];
-
-  if (isAdmin) {
-    publicItems.push({ icon: ShoppingCart, label: 'Vender Produtos', path: '/vendas' });
-    publicItems.push({ icon: Banknote, label: 'Fluxo de Caixa', path: '/caixa' });
-  }
-
-  // Itens exclusivos do administrador
-  const adminItems = [
-    { icon: Users, label: 'Equipe', path: '/equipe' },
-    { icon: DollarSign, label: 'Financeiro Geral', path: '/financeiro' },
-    { icon: Settings, label: 'Serviços do Studio', path: '/servicos' },
-  ];
-
-  const menuItems = isAdmin
-    ? [...publicItems, ...adminItems]
-    : publicItems;
 
   const roleLabel = isAdmin ? "ADMIN" : isAgente ? "AGENTE" : "COMUM";
   const roleColor = isAdmin ? "text-green-600" : isAgente ? "text-blue-600" : "text-red-600";
@@ -79,34 +88,34 @@ export default function Sidebar({ onClose, className }: SidebarProps) {
         )}
       </div>
 
-      <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto">
-        {menuItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            onClick={onClose}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",
-                isActive 
-                  ? "bg-primary text-white shadow-md shadow-primary/20" 
-                  : "text-muted hover:bg-secondary/30 hover:text-text"
-              )
-            }
-          >
-            <item.icon className="w-5 h-5" />
-            <span className="font-medium">{item.label}</span>
-          </NavLink>
-        ))}
-
-        {/* Separador visual para indicar zona admin */}
-        {isAdmin && (
-          <div className="pt-2 pb-1">
+      <nav className="flex-1 px-4 py-4 space-y-6 overflow-y-auto">
+        {groups.map((group) => (
+          <div key={group.label} className="space-y-1.5">
             <p className="px-4 text-[10px] font-bold uppercase tracking-widest text-muted/60">
-              Administração
+              {group.label}
             </p>
+            <div className="space-y-1">
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  onClick={onClose}
+                  className={({ isActive }) =>
+                    cn(
+                      "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200",
+                      isActive
+                        ? "bg-primary text-white shadow-md shadow-primary/20"
+                        : "text-muted hover:bg-secondary/30 hover:text-text"
+                    )
+                  }
+                >
+                  <item.icon className="w-5 h-5" />
+                  <span className="font-medium">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
           </div>
-        )}
+        ))}
       </nav>
 
       {/* Info do usuário logado e diagnóstico */}

@@ -9,6 +9,12 @@ export const SERVICE_CATEGORIES = [
   'Outros'
 ];
 
+export const PAYMENT_METHODS = [
+  { value: 'dinheiro', label: 'Dinheiro' },
+  { value: 'debito', label: 'Cartão de Débito' },
+  { value: 'credito', label: 'Cartão de Crédito' },
+];
+
 export const STAFF_SPECIALTIES = [
   'Cabeleireira',
   'Manicure/Pedicure',

@@ -74,6 +74,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   }
+  // Detalhe completo (inclui e-mail/uid) só vai para o console de
+  // desenvolvimento — nunca para a mensagem de erro, que pode acabar
+  // exibida ao usuário final (ver ErrorBoundary.tsx).
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  throw new Error(`Falha ao ${operationType} dados${path ? ' em ' + path : ''}. Tente novamente.`);
 }

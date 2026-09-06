@@ -64,7 +64,7 @@ export default function Layout() {
               <div className="bg-primary/20 p-2 rounded-2xl shadow-inner shadow-primary/10">
                 <Scissors className="text-primary w-5 h-5" />
               </div>
-              <h1 className="text-lg font-black text-text tracking-tighter uppercase">
+              <h1 className="text-lg font-semibold text-text tracking-tighter uppercase">
                 Studio <span className="text-primary italic">Alê</span>
               </h1>
             </div>
@@ -80,7 +80,7 @@ export default function Layout() {
 
         {/* Main Content Area */}
         <main className={cn(
-          "flex-1 overflow-y-auto bg-[#F9F9F9]",
+          "flex-1 overflow-y-auto bg-[#FBF7F6]",
           "pb-24 lg:pb-8" // Extra space for BottomNav on mobile
         )}>
           <div className="max-w-7xl mx-auto p-4 md:p-8">
@@ -109,7 +109,7 @@ export default function Layout() {
                     <item.icon className={cn("w-5 h-5", isActive ? "stroke-[3px]" : "stroke-[2px]")} />
                   </div>
                   <span className={cn(
-                    "text-[8px] font-black uppercase tracking-widest",
+                    "text-[8px] font-semibold uppercase tracking-widest",
                     isActive ? "opacity-100" : "opacity-0"
                   )}>
                     {item.label}

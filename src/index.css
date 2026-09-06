@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Work+Sans:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,17 +6,17 @@
 
 @layer base {
   body {
-    @apply bg-[#FFFDFB] text-slate-800 antialiased font-['Outfit',sans-serif];
+    @apply bg-background text-text antialiased font-sans;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-[#FFB6C1] hover:bg-[#FF8DA1] text-white font-bold py-3 px-6 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-pink-100 text-sm sm:text-base;
+    @apply bg-[#E38EA0] hover:bg-[#C15F76] text-white font-bold py-3 px-6 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-pink-100 text-sm sm:text-base;
   }
   
   .card-premium {
-    @apply bg-white rounded-3xl sm:rounded-[2.5rem] shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] border border-slate-50 overflow-hidden transition-all hover:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)];
+    @apply bg-white rounded-3xl sm:rounded-5xl shadow-[0_10px_40px_-15px_rgba(0,0,0,0.05)] border border-slate-50 overflow-hidden transition-all hover:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.08)];
   }
 
   /* UI DESIGN SYSTEM - PREMIUM FORMS (Based on Ref Photo) */
@@ -52,7 +52,7 @@
   }
 
   .label-premium {
-    @apply block text-[11px] font-black uppercase text-slate-400 tracking-[0.1em] mb-2 px-1;
+    @apply block text-[11px] font-semibold uppercase text-slate-400 tracking-widest mb-2 px-1;
   }
 
   .helper-premium {
@@ -60,7 +60,7 @@
   }
 
   .floating-label {
-    @apply absolute -top-2 left-4 bg-white px-1.5 text-[9px] font-black uppercase text-pink-300 tracking-[0.2em] z-10 transition-all;
+    @apply absolute -top-2 left-4 bg-white px-1.5 text-[9px] font-semibold uppercase text-pink-300 tracking-widest z-10 transition-all;
   }
 
   /* CUSTOM CHECKBOX */
@@ -81,5 +81,17 @@
   }
   .animate-fade-up {
     animation: fadeUp 0.5s ease-out forwards;
+  }
+
+  /* Usadas em Dashboard.tsx mas nunca tinham sido definidas — ficavam sem
+     nenhum estilo próprio. Definidas agora dentro do novo sistema visual. */
+  .glass-card {
+    @apply bg-white/90 backdrop-blur-xl border border-pink-50 rounded-3xl;
+  }
+  .mobile-card {
+    @apply bg-white rounded-2xl border border-pink-50/70 shadow-premium;
+  }
+  .btn-secondary {
+    @apply bg-pink-50 hover:bg-pink-100 text-pink-600 font-semibold rounded-xl transition-all active:scale-95 inline-flex items-center justify-center gap-2;
   }
 }

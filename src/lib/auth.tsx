@@ -36,7 +36,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("LOGIN STATUS - Email detectado:", firebaseUser?.email);
       setUser(firebaseUser);
       if (firebaseUser) {
         setLoading(true);

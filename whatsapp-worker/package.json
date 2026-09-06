@@ -1,0 +1,13 @@
+{
+  "name": "estudio-ale-whatsapp-worker",
+  "private": true,
+  "description": "Cloudflare Worker que dispara mensagens de WhatsApp via Meta Cloud API para o Estúdio Alê",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "secret": "wrangler secret put WHATSAPP_TOKEN"
+  },
+  "devDependencies": {
+    "wrangler": "^3.78.0"
+  }
+}

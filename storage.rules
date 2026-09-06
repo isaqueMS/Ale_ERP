@@ -1,16 +1,31 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /products/{allPaths=**} {
-      // Aberto para qualquer usuário autenticado ler/escrever durante o ajuste do sistema
-      // No futuro, podemos restringir apenas ao seu e-mail de admin
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email in [
+          '7185062361@estudioale.com',
+          'admin@estudioale.com',
+          'alexandra@estudioale.com'
+        ] ||
+        (
+          firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+          firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
     }
-    
-    // Regra padrão para outros caminhos
+
+    // Fotos de produtos e de profissionais: leitura para qualquer autenticado,
+    // escrita (upload/remoção) só para admin — espelha as regras do Firestore.
+    match /products/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
     match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
     }
   }
 }

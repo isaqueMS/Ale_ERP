@@ -1,13 +1,80 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Permissão para qualquer usuário autenticado (atendentes e admin)
-    match /{document=**} {
-      allow read, write: if isAuthenticated();
+    // Espelha a lista de e-mails "dono" já usada no cliente (src/lib/auth.tsx),
+    // mais um papel explícito salvo em /users/{uid}.role == 'admin'.
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email in [
+          '7185062361@estudioale.com',
+          'admin@estudioale.com',
+          'alexandra@estudioale.com'
+        ] ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
     }
+
+    // Ping de conexão usado em App.tsx
+    match /test/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    // Perfil do próprio usuário (criado em signUp / self-heal de admin)
+    match /users/{uid} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      // Admin também pode escrever (ex: mudar o "role" de um profissional
+      // a partir da tela de Equipe) além do próprio dono do perfil.
+      allow write: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+    }
+
+    // Equipe: dados de comissão/telefone/e-mail dos profissionais.
+    // Leitura liberada para qualquer autenticado (necessário para agenda/dashboard),
+    // escrita só para admin (cadastro/edição/exclusão de profissionais).
+    match /staff/{staffId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Financeiro: caixa e relatórios. Somente admin lê e escreve.
+    match /transactions/{txId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Clientes: cadastro/edição/exclusão só admin (mesma regra já aplicada na UI).
+    match /clients/{clientId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Catálogo de produtos: leitura liberada, escrita (inclui baixa de estoque no PDV) só admin.
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Menu de serviços do studio: só admin edita.
+    match /services/{serviceId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Agendamentos: qualquer autenticado pode criar/editar (agente/staff cuidam da própria agenda);
+    // exclusão só admin.
+    match /appointments/{apptId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // Qualquer outra coleção não prevista acima: negado por padrão (sem catch-all liberado).
   }
 }

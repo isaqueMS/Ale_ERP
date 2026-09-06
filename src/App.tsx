@@ -50,7 +50,10 @@ export default function App() {
             <Route path="agenda" element={<AppointmentCalendar />} />
             <Route path="clientes" element={<ClientManagement />} />
             <Route path="produtos" element={<ProductManagement />} />
-            <Route path="vendas" element={<ProductPOS />} />
+            <Route 
+              path="vendas" 
+              element={isAdmin ? <ProductPOS /> : <Navigate to="/" replace />} 
+            />
             
             <Route 
               path="servicos" 
@@ -60,7 +63,10 @@ export default function App() {
               path="equipe" 
               element={isAdmin ? <StaffManagement /> : <Navigate to="/" replace />} 
             />
-            <Route path="caixa" element={<CashRegister />} />
+            <Route 
+              path="caixa" 
+              element={isAdmin ? <CashRegister /> : <Navigate to="/" replace />} 
+            />
             <Route 
               path="financeiro" 
               element={isAdmin ? <FinancialManagement /> : <Navigate to="/" replace />} 
