@@ -70,6 +70,9 @@ export default function ClientManagement() {
   const [isSending, setIsSending] = useState(false);
   const [sendResults, setSendResults] = useState<SendResult[]>([]);
   const [sendingSingleId, setSendingSingleId] = useState<string | null>(null);
+  // true quando o envio em massa é o de boas-vindas pra TODA a base (sem
+  // composição de texto — sempre o modelo aprovado), não a promoção manual.
+  const [isWelcomeBatch, setIsWelcomeBatch] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'clients'), (snapshot) => {
@@ -87,11 +90,21 @@ export default function ClientManagement() {
     e.preventDefault();
     if (!isAdmin) return;
     const data = { ...formData, createdAt: new Date().toISOString() };
+    const isNewClient = !editingClient;
     if (editingClient) await updateDoc(doc(db, 'clients', editingClient.id), data);
     else await addDoc(collection(db, 'clients'), data);
     setIsModalOpen(false);
     setEditingClient(null);
     setFormData({ name: '', phone: '', email: '', birthDate: '', notes: '' });
+
+    // Cliente novo (não em edição) recebe a mensagem de boas-vindas
+    // automaticamente. Não trava o cadastro se o envio falhar — o cadastro
+    // em si já foi salvo, isso aqui é só um extra.
+    if (isNewClient && data.phone) {
+      sendWhatsAppTemplate(data.phone).catch((err) => {
+        console.error('Falha ao mandar boas-vindas automático pro cliente novo:', err?.message || err);
+      });
+    }
   };
 
   const toggleSelectionMode = () => {
@@ -137,7 +150,7 @@ export default function ClientManagement() {
   // Dispara pra TODOS os clientes selecionados em sequência, um atrás do
   // outro (com uma pequena pausa entre cada um pra não sobrecarregar a API
   // da Meta) — sem precisar confirmar um por um.
-  const runBatchSend = async (list: Client[]) => {
+  const runBatchSend = async (list: Client[], sendFn: (client: Client) => Promise<SendResult>) => {
     setIsSending(true);
     const results: SendResult[] = [];
     for (let i = 0; i < list.length; i++) {
@@ -148,7 +161,7 @@ export default function ClientManagement() {
         break;
       }
       setPromoIndex(i);
-      const result = await dispatchWhatsApp(list[i], buildMessageFor(list[i]));
+      const result = await sendFn(list[i]);
       results.push(result);
       setSendResults([...results]);
       if (i < list.length - 1 && !cancelPromoRef.current) {
@@ -165,7 +178,7 @@ export default function ClientManagement() {
     setSendResults([]);
     setPromoStep('sending');
     cancelPromoRef.current = false;
-    runBatchSend(promoClients);
+    runBatchSend(promoClients, (client) => dispatchWhatsApp(client, buildMessageFor(client)));
   };
 
   const cancelPromoSending = () => {
@@ -181,6 +194,37 @@ export default function ClientManagement() {
     setPromoStep('compose');
     setPromoIndex(0);
     setSendResults([]);
+    setIsWelcomeBatch(false);
+  };
+
+  // Manda o modelo de boas-vindas aprovado (mesmo usado pra reabrir a janela
+  // de 24h) — não tenta texto livre antes, porque aqui o objetivo é
+  // justamente iniciar contato com quem nunca conversou com o número.
+  const dispatchWelcome = async (client: Client): Promise<SendResult> => {
+    try {
+      await sendWhatsAppTemplate(client.phone);
+      return { client, outcome: 'template' };
+    } catch (err: any) {
+      return { client, outcome: 'error', detail: err?.message || 'Falha ao enviar a mensagem de boas-vindas.' };
+    }
+  };
+
+  // Manda boas-vindas pra TODA a base já cadastrada, de uma vez. Pensado
+  // pra usar uma única vez (depois que o app passou a mandar boas-vindas
+  // automático em todo cadastro novo, essa base antiga também recebe).
+  const openWelcomeBatchModal = () => {
+    if (clients.length === 0) return;
+    if (!confirm(`Mandar a mensagem de boas-vindas pra ${clients.length} cliente${clients.length === 1 ? '' : 's'} cadastrado${clients.length === 1 ? '' : 's'}? Isso não pode ser desfeito depois de começar.`)) {
+      return;
+    }
+    setPromoClients(clients);
+    setIsWelcomeBatch(true);
+    setPromoIndex(0);
+    setSendResults([]);
+    setPromoStep('sending');
+    setIsPromoModalOpen(true);
+    cancelPromoRef.current = false;
+    runBatchSend(clients, dispatchWelcome);
   };
 
   const sendSingleMessage = async (client: Client) => {
@@ -216,6 +260,15 @@ export default function ClientManagement() {
           >
             <Megaphone className="w-4 h-4" /> {selectionMode ? 'Cancelar Seleção' : 'Enviar Promoção'}
           </button>
+          {isAdmin && (
+            <button
+              onClick={openWelcomeBatchModal}
+              title="Manda a mensagem de boas-vindas pra todo mundo já cadastrado, de uma vez"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-[11px] font-semibold uppercase tracking-widest transition-all shadow-sm active:scale-95 bg-pink-50 text-[#C15F76] hover:bg-[#E38EA0] hover:text-white"
+            >
+              <Send className="w-4 h-4" /> Boas-vindas em massa
+            </button>
+          )}
           {isAdmin && (
             <button onClick={() => setIsModalOpen(true)} className="btn-primary flex-1 sm:flex-none">
               <Plus className="w-5 h-5" /> Novo Cliente
@@ -453,7 +506,9 @@ export default function ClientManagement() {
               {promoStep === 'sending' && promoClients[promoIndex] && (
                 <>
                   <div className="mb-6 shrink-0 pr-8">
-                    <h3 className="text-xl md:text-2xl font-semibold text-slate-800 uppercase tracking-tight leading-none">Enviando Promoção</h3>
+                    <h3 className="text-xl md:text-2xl font-semibold text-slate-800 uppercase tracking-tight leading-none">
+                      {isWelcomeBatch ? 'Enviando Boas-vindas' : 'Enviando Promoção'}
+                    </h3>
                     <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-2 px-1 opacity-70">
                       Cliente {Math.min(sendResults.length + 1, promoClients.length)} de {promoClients.length}
                     </p>
@@ -469,7 +524,11 @@ export default function ClientManagement() {
                   <div className="bg-[#FBF7F6] rounded-3xl p-6 mb-5">
                     <p className="text-lg font-semibold text-slate-800">{promoClients[promoIndex].name}</p>
                     <p className="text-xs font-bold text-slate-400 mb-3">{promoClients[promoIndex].phone}</p>
-                    <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{buildMessageFor(promoClients[promoIndex])}</p>
+                    {isWelcomeBatch ? (
+                      <p className="text-sm text-slate-500 leading-relaxed italic">Mensagem de boas-vindas (modelo aprovado pela Meta).</p>
+                    ) : (
+                      <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{buildMessageFor(promoClients[promoIndex])}</p>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-center gap-3 text-slate-400 text-xs font-semibold uppercase tracking-widest mb-5">
@@ -495,21 +554,27 @@ export default function ClientManagement() {
                     <div className="w-16 h-16 rounded-full bg-pink-50 text-[#E38EA0] flex items-center justify-center mb-5 mx-auto">
                       <CheckCircle2 className="w-8 h-8" />
                     </div>
-                    <h3 className="text-xl font-semibold text-slate-800 uppercase tracking-tight mb-2">Promoção concluída</h3>
+                    <h3 className="text-xl font-semibold text-slate-800 uppercase tracking-tight mb-2">{isWelcomeBatch ? 'Boas-vindas concluída' : 'Promoção concluída'}</h3>
                     <p className="text-slate-400 text-sm mb-6">Você percorreu todos os {promoClients.length} clientes selecionados.</p>
 
                     <div className="space-y-3 text-left mb-8">
-                      <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-2xl px-5 py-3">
-                        <span className="text-xs font-semibold text-emerald-700">Promoção enviada direto</span>
-                        <span className="text-sm font-bold text-emerald-700">{sentDirect.length}</span>
-                      </div>
+                      {!isWelcomeBatch && (
+                        <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-2xl px-5 py-3">
+                          <span className="text-xs font-semibold text-emerald-700">Promoção enviada direto</span>
+                          <span className="text-sm font-bold text-emerald-700">{sentDirect.length}</span>
+                        </div>
+                      )}
                       {sentTemplate.length > 0 && (
-                        <div className="bg-amber-50 border border-amber-100 rounded-2xl px-5 py-3">
+                        <div className={cn(isWelcomeBatch ? "bg-emerald-50 border-emerald-100" : "bg-amber-50 border-amber-100", "border rounded-2xl px-5 py-3")}>
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-amber-700 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Só recebeu boas-vindas (aguardando resposta)</span>
-                            <span className="text-sm font-bold text-amber-700">{sentTemplate.length}</span>
+                            <span className={cn(isWelcomeBatch ? "text-emerald-700" : "text-amber-700", "text-xs font-semibold flex items-center gap-1.5")}>
+                              {!isWelcomeBatch && <AlertTriangle className="w-3.5 h-3.5" />} {isWelcomeBatch ? 'Boas-vindas enviada' : 'Só recebeu boas-vindas (aguardando resposta)'}
+                            </span>
+                            <span className={cn(isWelcomeBatch ? "text-emerald-700" : "text-amber-700", "text-sm font-bold")}>{sentTemplate.length}</span>
                           </div>
-                          <p className="text-[10px] text-amber-600 font-semibold mt-2">{sentTemplate.map(r => r.client.name).join(', ')}</p>
+                          {!isWelcomeBatch && (
+                            <p className="text-[10px] text-amber-600 font-semibold mt-2">{sentTemplate.map(r => r.client.name).join(', ')}</p>
+                          )}
                         </div>
                       )}
                       {failed.length > 0 && (
@@ -518,7 +583,13 @@ export default function ClientManagement() {
                             <span className="text-xs font-semibold text-red-600">Falhou</span>
                             <span className="text-sm font-bold text-red-600">{failed.length}</span>
                           </div>
-                          <p className="text-[10px] text-red-500 font-semibold mt-2">{failed.map(r => r.client.name).join(', ')}</p>
+                          <div className="space-y-1.5 mt-2">
+                            {failed.map(r => (
+                              <p key={r.client.id} className="text-[10px] text-red-500 font-semibold leading-snug">
+                                {r.client.name}{r.detail ? ` — ${r.detail}` : ''}
+                              </p>
+                            ))}
+                          </div>
                         </div>
                       )}
                       {skipped.length > 0 && (

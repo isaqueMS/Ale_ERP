@@ -38,6 +38,16 @@ export function phonesMatch(a: string, b: string) {
   return digitsA.slice(-8) === digitsB.slice(-8);
 }
 
+// Mesma normalização que o Worker (cleanPhone em worker.js) usa pra decidir
+// o id do documento da conversa no Firestore — precisa bater exatamente,
+// senão uma conversa nova criada pelo app (Inbox) fica com um id diferente
+// do que o Worker cria quando a mensagem é de fato enviada pela Meta.
+export function normalizePhoneForWhatsApp(phone: string) {
+  const digits = ('' + phone).replace(/\D/g, '');
+  if (digits.length > 11 && digits.startsWith('55')) return digits;
+  return `55${digits}`;
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

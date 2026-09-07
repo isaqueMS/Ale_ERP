@@ -45,6 +45,13 @@ const GRAPH_API_VERSION = 'v20.0';
 const WELCOME_TEMPLATE_NAME = 'studio';
 // Ajuste para 'en_US' se a Meta recusar dizendo que o template/idioma não existe.
 const TEMPLATE_LANGUAGE = 'en';
+// O template "studio" tem uma imagem de cabeçalho (a logo do studio) — a
+// Meta exige que TODO envio desse template mande essa imagem de novo (não
+// basta ter sido enviada quando o template foi criado/aprovado). Como o
+// repositório do projeto é público no GitHub, usamos o link direto do
+// arquivo public/logo.png — a Meta busca essa URL sozinha, sem precisar
+// fazer upload de mídia antes.
+const WELCOME_TEMPLATE_HEADER_IMAGE_URL = 'https://raw.githubusercontent.com/isaqueMS/Ale_ERP/main/public/logo.png';
 
 // ID do projeto no Firebase/Google Cloud (o mesmo de firebase-applet-config.json).
 const GCP_PROJECT_ID = 'chess-d6bcf';
@@ -111,6 +118,51 @@ function base64ToBytes(base64) {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  const chunkSize = 0x8000; // evita "too many arguments" com imagens grandes
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+// Limite de segurança pra imagem recebida de cliente: guardamos a imagem
+// inteira (em base64) dentro do próprio documento da mensagem no Firestore,
+// que tem um limite de 1 MiB por documento. Com esse teto, o base64 fica em
+// ~800 KB, deixando margem pros outros campos do documento.
+const MAX_INCOMING_IMAGE_BYTES = 600 * 1024;
+
+// Baixa uma imagem que um cliente mandou pelo WhatsApp e devolve como
+// "data URI" (pra já poder virar <img src=...> direto no app, sem precisar
+// de nenhum outro serviço de armazenamento). Usa o próprio WHATSAPP_TOKEN
+// pra consultar a URL de download (que é temporária) e baixar o arquivo.
+async function fetchIncomingImageAsDataUri(env, mediaId) {
+  const metaRes = await fetch(`https://graph.facebook.com/${GRAPH_API_VERSION}/${mediaId}`, {
+    headers: { Authorization: `Bearer ${env.WHATSAPP_TOKEN}` }
+  });
+  if (!metaRes.ok) throw new Error('Não deu pra consultar a mídia na Meta.');
+  const meta = await metaRes.json();
+  if (!meta?.url) throw new Error('Mídia sem URL de download.');
+
+  // Checa o tamanho antes de baixar tudo, quando a Meta informa.
+  if (meta.file_size && meta.file_size > MAX_INCOMING_IMAGE_BYTES) {
+    return { tooLarge: true };
+  }
+
+  const fileRes = await fetch(meta.url, {
+    headers: { Authorization: `Bearer ${env.WHATSAPP_TOKEN}` }
+  });
+  if (!fileRes.ok) throw new Error('Não deu pra baixar a mídia da Meta.');
+  const buf = await fileRes.arrayBuffer();
+  if (buf.byteLength > MAX_INCOMING_IMAGE_BYTES) {
+    return { tooLarge: true };
+  }
+  const mimeType = meta.mime_type || 'image/jpeg';
+  const base64 = bytesToBase64(new Uint8Array(buf));
+  return { dataUri: `data:${mimeType};base64,${base64}` };
 }
 
 // Sobe um arquivo (ex.: o PDF da Nota de Serviço) pro "media library" da
@@ -248,14 +300,19 @@ async function firestoreCommit(env, writes) {
 
 // Grava a mensagem na subcoleção conversations/{phone}/messages e atualiza o
 // "resumo" da conversa (última mensagem, direção, contador de não lidas).
-async function saveConversationMessage(env, { phone, direction, body, type, status, waMessageId, senderName }) {
+async function saveConversationMessage(env, { phone, direction, body, type, status, waMessageId, senderName, previewText, caption }) {
   const now = new Date().toISOString();
   const msgId = waMessageId || crypto.randomUUID();
+  // Pra mensagens de imagem, "body" vira o data URI (uma string enorme) —
+  // isso não pode aparecer no resumo da conversa (a lista da Caixa de
+  // Entrada), por isso previewText permite mandar um texto curto ("📷
+  // Imagem") só pra esse resumo, mantendo o body completo na mensagem em si.
+  const preview = previewText !== undefined ? previewText : (body || '');
 
   const conversationWrite = {
     update: {
       name: docName(`conversations/${phone}`),
-      fields: fsFields({ phone, lastMessage: body || '', lastMessageAt: now, lastDirection: direction, updatedAt: now })
+      fields: fsFields({ phone, lastMessage: preview, lastMessageAt: now, lastDirection: direction, updatedAt: now })
     },
     updateMask: { fieldPaths: ['phone', 'lastMessage', 'lastMessageAt', 'lastDirection', 'updatedAt'] }
   };
@@ -273,7 +330,8 @@ async function saveConversationMessage(env, { phone, direction, body, type, stat
         type: type || 'text',
         status: status || (direction === 'in' ? 'received' : 'sent'),
         timestamp: now,
-        ...(senderName ? { senderName } : {})
+        ...(senderName ? { senderName } : {}),
+        ...(caption ? { caption } : {})
       })
     }
   };
@@ -282,13 +340,23 @@ async function saveConversationMessage(env, { phone, direction, body, type, stat
   return msgId;
 }
 
-async function updateMessageStatus(env, recipientId, waMessageId, status) {
+async function updateMessageStatus(env, recipientId, waMessageId, status, statusError) {
   const phone = cleanPhone(recipientId);
+  // Quando o status é "failed", a Meta manda um motivo em statuses[].errors[]
+  // (código + título) — sem isso, só sabíamos QUE falhou, nunca o porquê.
+  // Guardamos esse motivo no campo statusError pra aparecer na Caixa de
+  // Entrada embaixo da mensagem.
+  const fields = { status };
+  const fieldPaths = ['status'];
+  if (statusError) {
+    fields.statusError = statusError;
+    fieldPaths.push('statusError');
+  }
   try {
     await firestoreCommit(env, [
       {
-        update: { name: docName(`conversations/${phone}/messages/${waMessageId}`), fields: fsFields({ status }) },
-        updateMask: { fieldPaths: ['status'] },
+        update: { name: docName(`conversations/${phone}/messages/${waMessageId}`), fields: fsFields(fields) },
+        updateMask: { fieldPaths },
         currentDocument: { exists: true }
       }
     ]);
@@ -362,19 +430,50 @@ async function handleWebhookEvent(request, env) {
         for (const msg of value.messages || []) {
           const phone = cleanPhone(msg.from);
           const senderName = (value.contacts || [])[0]?.profile?.name;
+          let body = extractMessageBody(msg);
+          let previewText;
+          let caption;
+
+          // Imagem mandada pela cliente: baixa e guarda pra aparecer de
+          // verdade na conversa (antes só mostrava um aviso genérico de
+          // "mensagem de image recebida", sem a imagem).
+          if (msg.type === 'image' && msg.image?.id) {
+            caption = msg.image.caption || undefined;
+            try {
+              const media = await fetchIncomingImageAsDataUri(env, msg.image.id);
+              if (media.tooLarge) {
+                body = '[Imagem recebida — muito grande pra exibir aqui. Peça pra cliente reenviar comprimida.]';
+                previewText = '📷 Imagem (muito grande)';
+              } else {
+                body = media.dataUri;
+                previewText = caption ? `📷 ${caption}` : '📷 Imagem';
+              }
+            } catch (e) {
+              console.error('Falha ao baixar imagem recebida:', e.message);
+              body = '[Não deu pra carregar a imagem recebida — tente abrir direto no WhatsApp.]';
+              previewText = '📷 Imagem (falhou ao carregar)';
+            }
+          }
+
           await saveConversationMessage(env, {
             phone,
             direction: 'in',
-            body: extractMessageBody(msg),
+            body,
             type: msg.type,
             status: 'received',
             waMessageId: msg.id,
-            senderName
+            senderName,
+            previewText,
+            caption
           });
         }
 
         for (const status of value.statuses || []) {
-          await updateMessageStatus(env, status.recipient_id, status.id, status.status);
+          const errorInfo = status.errors?.[0];
+          const statusError = errorInfo
+            ? `${errorInfo.code ? `(${errorInfo.code}) ` : ''}${errorInfo.title || errorInfo.message || 'Falha desconhecida'}`
+            : undefined;
+          await updateMessageStatus(env, status.recipient_id, status.id, status.status, statusError);
         }
       }
     }
@@ -430,7 +529,18 @@ export default {
           messaging_product: 'whatsapp',
           to: cleanPhone(phone),
           type: 'template',
-          template: { name: WELCOME_TEMPLATE_NAME, language: { code: TEMPLATE_LANGUAGE } }
+          template: {
+            name: WELCOME_TEMPLATE_NAME,
+            language: { code: TEMPLATE_LANGUAGE },
+            components: [
+              {
+                type: 'header',
+                parameters: [
+                  { type: 'image', image: { link: WELCOME_TEMPLATE_HEADER_IMAGE_URL } }
+                ]
+              }
+            ]
+          }
         });
         const messageId = result?.messages?.[0]?.id || null;
         // ctx.waitUntil garante que essa gravação no Firestore termine mesmo

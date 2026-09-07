@@ -121,8 +121,16 @@
   .shadow-premium {
     @apply shadow-[0_1px_2px_rgba(23,23,28,0.04),0_8px_20px_-8px_rgba(23,23,28,0.08)];
   }
+  /* Sem "forwards": um transform que fica de pé no fim da animação (ainda
+     que visualmente idêntico a translateY(0)) cria um novo containing block
+     pra qualquer elemento fixed/absolute dentro dele — isso fazia os modais
+     (position: fixed) renderizarem colados nessa div em vez da tela, dando
+     a impressão de que o formulário "desaparecia"/ficava fora da área
+     visível até rolar a página. Sem forwards, o transform volta a none
+     (o padrão) assim que a animação termina, e o resultado visual final é
+     o mesmo — só que sem quebrar o posicionamento dos modais.*/
   .animate-fade-up {
-    animation: fadeUp 0.4s ease-out forwards;
+    animation: fadeUp 0.4s ease-out;
   }
 
   .glass-card {

@@ -12,6 +12,10 @@ export default {
         // Beauty SaaS" — rosa como elemento de marca, não como tema geral).
         primary: '#E38EA0',
         'primary-dark': '#C15F76',
+        // Rosa mais escuro, feito pra texto branco por cima (bolha de mensagem
+        // enviada, badges com número) — o 'primary' comum só dá 2.4:1 de
+        // contraste com branco (reprova WCAG AA); esse aqui dá 5.1:1.
+        'primary-deep': '#AE4D6A',
         secondary: '#FCF2F1',   // superfície suave rosada, uso pontual
         accent: '#C15F76',      // rosa mais forte, para ênfase/hover
         background: '#FBF7F6',  // fundo geral, neutro com leve viés rosado
